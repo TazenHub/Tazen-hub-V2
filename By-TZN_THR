@@ -1,1 +1,94 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
 
+-- Création de l'interface graphique (GUI)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "GodModeGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 200, 0, 100)
+frame.Position = UDim2.new(0.5, -100, 0.5, -50)
+frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = frame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "Menu God Mode"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 14
+title.Font = Enum.Font.SourceSansBold
+title.Parent = frame
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0.8, 0, 0, 40)
+toggleButton.Position = UDim2.new(0.1, 0, 0.45, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+toggleButton.Text = "God Mode : OFF"
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextSize = 14
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.Parent = frame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 6)
+btnCorner.Parent = toggleButton
+
+-- Logique du God Mode
+local godModeEnabled = false
+local connection = nil
+
+local function applyGodMode(character)
+	local humanoid = character:WaitForChild("Humanoid")
+	
+	if connection then
+		connection:Disconnect()
+		connection = nil
+	end
+	
+	if godModeEnabled then
+		humanoid.MaxHealth = math.huge
+		humanoid.Health = math.huge
+		
+		connection = humanoid.HealthChanged:Connect(function(health)
+			if godModeEnabled and health < humanoid.MaxHealth then
+				humanoid.Health = humanoid.MaxHealth
+			end
+		end)
+	else
+		humanoid.MaxHealth = 100
+		humanoid.Health = 100
+	end
+end
+
+toggleButton.MouseButton1Click:Connect(function()
+	godModeEnabled = not godModeEnabled
+	
+	if godModeEnabled then
+		toggleButton.Text = "God Mode : ON"
+		toggleButton.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		toggleButton.Text = "God Mode : OFF"
+		toggleButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
+	
+	if player.Character then
+		applyGodMode(player.Character)
+	end
+end)
+
+player.CharacterAdded:Connect(function(character)
+	if godModeEnabled then
+		task.wait(1)
+		applyGodMode(character)
+	end
+end)
