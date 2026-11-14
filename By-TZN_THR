@@ -1,7 +1,13 @@
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
--- Création de l'interface graphique (GUI)
+-- Vérification de l'ID du jeu
+if game.PlaceId ~= 3623096087 then
+	print("Ce script est conçu pour le jeu ID 3623096087.")
+end
+
+-- Création de l'interface graphique
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "GodModeGui"
 screenGui.ResetOnSpawn = false
@@ -20,18 +26,9 @@ local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
 corner.Parent = frame
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 30)
-title.BackgroundTransparency = 1
-title.Text = "Menu God Mode"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.TextSize = 14
-title.Font = Enum.Font.SourceSansBold
-title.Parent = frame
-
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0.8, 0, 0, 40)
-toggleButton.Position = UDim2.new(0.1, 0, 0.45, 0)
+toggleButton.Position = UDim2.new(0.1, 0, 0.3, 0)
 toggleButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 toggleButton.Text = "God Mode : OFF"
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -45,28 +42,16 @@ btnCorner.Parent = toggleButton
 
 -- Logique du God Mode
 local godModeEnabled = false
-local connection = nil
+local heartBeatConnection = nil
 
-local function applyGodMode(character)
-	local humanoid = character:WaitForChild("Humanoid")
+local function updateGodMode()
+	local character = player.Character
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	
-	if connection then
-		connection:Disconnect()
-		connection = nil
-	end
-	
-	if godModeEnabled then
+	if humanoid and godModeEnabled then
 		humanoid.MaxHealth = math.huge
 		humanoid.Health = math.huge
-		
-		connection = humanoid.HealthChanged:Connect(function(health)
-			if godModeEnabled and health < humanoid.MaxHealth then
-				humanoid.Health = humanoid.MaxHealth
-			end
-		end)
-	else
-		humanoid.MaxHealth = 100
-		humanoid.Health = 100
 	end
 end
 
@@ -76,19 +61,27 @@ toggleButton.MouseButton1Click:Connect(function()
 	if godModeEnabled then
 		toggleButton.Text = "God Mode : ON"
 		toggleButton.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+		
+		-- Force la santé à chaque frame pour contrer l'anti-triche du jeu
+		if not heartBeatConnection then
+			heartBeatConnection = RunService.Heartbeat:Connect(updateGodMode)
+		end
 	else
 		toggleButton.Text = "God Mode : OFF"
 		toggleButton.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-	end
-	
-	if player.Character then
-		applyGodMode(player.Character)
-	end
-end)
-
-player.CharacterAdded:Connect(function(character)
-	if godModeEnabled then
-		task.wait(1)
-		applyGodMode(character)
+		
+		if heartBeatConnection then
+			heartBeatConnection:Disconnect()
+			heartBeatConnection = nil
+		end
+		
+		local character = player.Character
+		if character then
+			local humanoid = character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.MaxHealth = 100
+				humanoid.Health = 100
+			end
+		end
 	end
 end)
