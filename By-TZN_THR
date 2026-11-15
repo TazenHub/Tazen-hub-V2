@@ -4,16 +4,15 @@ local player = Players.LocalPlayer
 
 -- ScreenGui principal
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "TazenHub"
+screenGui.Name = "TazenHubV2"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
 -- Fenêtre principale
 local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 560, 0, 340)
-mainFrame.Position = UDim2.new(0.5, -280, 0.5, -170)
-mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22) -- Fond sombre type Tazen
+mainFrame.Size = UDim2.new(0, 520, 0, 320)
+mainFrame.Position = UDim2.new(0.5, -260, 0.5, -160)
+mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
 mainFrame.Parent = screenGui
@@ -22,10 +21,10 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
--- Barre supérieure (TopBar)
+-- Barre supérieure
 local topBar = Instance.new("Frame")
-topBar.Size = UDim2.new(1, 0, 0, 32)
-topBar.BackgroundColor3 = Color3.fromRGB(26, 26, 32)
+topBar.Size = UDim2.new(1, 0, 0, 34)
+topBar.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
 topBar.BorderSizePixel = 0
 topBar.Parent = mainFrame
 
@@ -33,17 +32,16 @@ local topCorner = Instance.new("UICorner")
 topCorner.CornerRadius = UDim.new(0, 8)
 topBar.Parent = mainFrame
 
--- Titre de la topbar (Logo texte ou nom)
-local topTitle = Instance.new("TextLabel")
-topTitle.Size = UDim2.new(1, -60, 1, 0)
-topTitle.Position = UDim2.new(0, 12, 0, 0)
-topTitle.BackgroundTransparency = 1
-topTitle.Text = "TAZEN — Hub"
-topTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
-topTitle.TextSize = 13
-topTitle.Font = Enum.Font.GothamBold
-topTitle.TextXAlignment = Enum.TextXAlignment.Left
-topTitle.Parent = topBar
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -50, 1, 0)
+titleLabel.Position = UDim2.new(0, 12, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "TAZEN — Hub V2"
+titleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+titleLabel.TextSize = 13
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = topBar
 
 -- Bouton Fermer
 local closeButton = Instance.new("TextButton")
@@ -64,7 +62,7 @@ closeButton.MouseButton1Click:Connect(function()
 	screenGui:Destroy()
 end)
 
--- Déplacement de la fenêtre (Draggable)
+-- Glisser la fenêtre
 local dragging, dragInput, dragStart, startPos
 topBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -92,113 +90,140 @@ UserInputService.InputChanged:Connect(function(input)
 	end
 end)
 
--- Barre latérale des onglets (Sidebar style reference)
-local sideBar = Instance.new("Frame")
-sideBar.Size = UDim2.new(0, 50, 1, -32)
-sideBar.Position = UDim2.new(0, 0, 0, 32)
-sideBar.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+-- Sidebar style ArrayField
+local sideBar = Instance.new("ScrollingFrame")
+sideBar.Size = UDim2.new(0, 140, 1, -34)
+sideBar.Position = UDim2.new(0, 0, 0, 34)
+sideBar.BackgroundColor3 = Color3.fromRGB(21, 21, 26)
 sideBar.BorderSizePixel = 0
+sideBar.CanvasSize = UDim2.new(0, 0, 0, 0)
+sideBar.ScrollBarThickness = 2
 sideBar.Parent = mainFrame
 
--- Logo miniature dans la sidebar (Remplace l'ID par ton image de logo uploadée)
-local logoImage = Instance.new("ImageLabel")
-logoImage.Size = UDim2.new(0, 32, 0, 32)
-logoImage.Position = UDim2.new(0.5, -16, 0, 12)
-logoImage.BackgroundColor3 = Color3.fromRGB(230, 120, 150) -- Teinte rose Tazen de secours
-logoImage.Image = "rbxassetid://0" -- Mets ton Asset ID ici
-logoImage.Parent = sideBar
+local sideList = Instance.new("UIListLayout")
+sideList.SortOrder = Enum.SortOrder.LayoutOrder
+sideList.Padding = UDim.new(0, 4)
+sideList.Parent = sideBar
 
-local logoCorner = Instance.new("UICorner")
-logoCorner.CornerRadius = UDim.new(1, 0)
-logoCorner.Parent = logoImage
+local sidePadding = Instance.new("UIPadding")
+sidePadding.PaddingTop = UDim.new(0, 8)
+sidePadding.PaddingLeft = UDim.new(0, 8)
+sidePadding.PaddingRight = UDim.new(0, 8)
+sidePadding.Parent = sideBar
 
--- Zone de contenu principale
-local contentContainer = Instance.new("Frame")
-contentContainer.Size = UDim2.new(1, -58, 1, -40)
-contentContainer.Position = UDim2.new(0, 54, 0, 36)
-contentContainer.BackgroundTransparency = 1
-contentContainer.Parent = mainFrame
+-- Bouton d'onglet dans la sidebar
+local tabBtn = Instance.new("TextButton")
+tabBtn.Size = UDim2.new(1, 0, 0, 32)
+tabBtn.BackgroundColor3 = Color3.fromRGB(210, 80, 130)
+tabBtn.Text = "  Accueil"
+tabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+tabBtn.TextSize = 12
+tabBtn.Font = Enum.Font.GothamBold
+tabBtn.TextXAlignment = Enum.TextXAlignment.Left
+tabBtn.Parent = sideBar
 
--- Carte Profil / Utilisateur (similaire à la ref)
-local profileCard = Instance.new("Frame")
-profileCard.Size = UDim2.new(1, -12, 0, 54)
-profileCard.Position = UDim2.new(0, 6, 0, 4)
-profileCard.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-profileCard.BorderSizePixel = 0
-profileCard.Parent = contentContainer
+local tabCorner = Instance.new("UICorner")
+tabCorner.CornerRadius = UDim.new(0, 6)
+tabCorner.Parent = tabBtn
 
-local profileCorner = Instance.new("UICorner")
-profileCorner.CornerRadius = UDim.new(0, 6)
-profileCorner.Parent = profileCard
+-- Conteneur du contenu principal à droite
+local contentArea = Instance.new("Frame")
+contentArea.Size = UDim2.new(1, -140, 1, -34)
+contentArea.Position = UDim2.new(0, 140, 0, 34)
+contentArea.BackgroundTransparency = 1
+contentArea.Parent = mainFrame
 
-local userText = Instance.new("TextLabel")
-userText.Size = UDim2.new(1, -20, 1, 0)
-userText.Position = UDim2.new(0, 14, 0, 0)
-userText.BackgroundTransparency = 1
-userText.Text = "Bienvenue, " .. player.Name .. " — Tazen User"
-userText.TextColor3 = Color3.fromRGB(245, 245, 250)
-userText.TextSize = 13
-userText.Font = Enum.Font.GothamBold
-userText.TextXAlignment = Enum.TextXAlignment.Left
-userText.Parent = profileCard
+-- Message de bienvenue
+local welcomeLabel = Instance.new("TextLabel")
+welcomeLabel.Size = UDim2.new(1, -24, 0, 24)
+welcomeLabel.Position = UDim2.new(0, 12, 0, 12)
+welcomeLabel.BackgroundTransparency = 1
+welcomeLabel.Text = "Bienvenue, " .. player.Name .. " — Tazen hub user"
+welcomeLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+welcomeLabel.TextSize = 13
+welcomeLabel.Font = Enum.Font.GothamBold
+welcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
+welcomeLabel.Parent = contentArea
 
--- Section des cartes d'infos / modules
-local infoCard = Instance.new("Frame")
-infoCard.Size = UDim2.new(0.48, -4, 0, 185)
-infoCard.Position = UDim2.new(0, 6, 0, 66)
-infoCard.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-infoCard.BorderSizePixel = 0
-infoCard.Parent = contentContainer
+-- Cadre des éléments
+local elementsFrame = Instance.new("ScrollingFrame")
+elementsFrame.Size = UDim2.new(1, -24, 1, -48)
+elementsFrame.Position = UDim2.new(0, 12, 0, 40)
+elementsFrame.BackgroundTransparency = 1
+elementsFrame.CanvasSize = UDim2.new(0, 0, 0, 200)
+elementsFrame.ScrollBarThickness = 3
+elementsFrame.Parent = contentArea
 
-local infoCorner = Instance.new("UICorner")
-infoCorner.CornerRadius = UDim.new(0, 6)
-infoCorner.Parent = infoCard
+local elList = Instance.new("UIListLayout")
+elList.SortOrder = Enum.SortOrder.LayoutOrder
+elList.Padding = UDim.new(0, 8)
+elList.Parent = elementsFrame
 
-local infoTitle = Instance.new("TextLabel")
-infoTitle.Size = UDim2.new(1, -20, 0, 30)
-infoTitle.Position = UDim2.new(0, 12, 0, 6)
-infoTitle.BackgroundTransparency = 1
-infoTitle.Text = "Statut du Hub"
-infoTitle.TextColor3 = Color3.fromRGB(230, 120, 150) -- Rose Tazen
-infoTitle.TextSize = 13
-infoTitle.Font = Enum.Font.GothamBold
-infoTitle.TextXAlignment = Enum.TextXAlignment.Left
-infoTitle.Parent = infoCard
+-- 1. Toggle
+local toggleBox = Instance.new("TextButton")
+toggleBox.Size = UDim2.new(1, 0, 0, 36)
+toggleBox.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+toggleBox.Text = ""
+toggleBox.Parent = elementsFrame
 
--- Seconde carte d'action aux couleurs de la marque
-local actionCard = Instance.new("Frame")
-actionCard.Size = UDim2.new(0.52, -10, 0, 185)
-actionCard.Position = UDim2.new(0.48, 2, 0, 66)
-actionCard.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-actionCard.BorderSizePixel = 0
-actionCard.Parent = contentContainer
+local tCorner = Instance.new("UICorner")
+tCorner.CornerRadius = UDim.new(0, 6)
+tCorner.Parent = toggleBox
 
-local actionCorner = Instance.new("UICorner")
-actionCorner.CornerRadius = UDim.new(0, 6)
-actionCorner.Parent = actionCard
+local tText = Instance.new("TextLabel")
+tText.Size = UDim2.new(1, -40, 1, 0)
+tText.Position = UDim2.new(0, 10, 0, 0)
+tText.BackgroundTransparency = 1
+tText.Text = "Activer l'option"
+tText.TextColor3 = Color3.fromRGB(200, 200, 210)
+tText.TextSize = 12
+tText.Font = Enum.Font.Gotham
+tText.TextXAlignment = Enum.TextXAlignment.Left
+tText.Parent = toggleBox
 
-local actionTitle = Instance.new("TextLabel")
-actionTitle.Size = UDim2.new(1, -20, 0, 30)
-actionTitle.Position = UDim2.new(0, 12, 0, 6)
-actionTitle.BackgroundTransparency = 1
-actionTitle.Text = "Options Tazen"
-actionTitle.TextColor3 = Color3.fromRGB(245, 245, 250)
-actionTitle.TextSize = 13
-actionTitle.Font = Enum.Font.GothamBold
-actionTitle.TextXAlignment = Enum.TextXAlignment.Left
-actionTitle.Parent = actionCard
+local tInd = Instance.new("Frame")
+tInd.Size = UDim2.new(0, 16, 0, 16)
+tInd.Position = UDim2.new(1, -26, 0.5, -8)
+tInd.BackgroundColor3 = Color3.fromRGB(180, 50, 70)
+tInd.Parent = toggleBox
 
--- Bouton d'action principal rose stylisé
-local actionBtn = Instance.new("TextButton")
-actionBtn.Size = UDim2.new(1, -24, 0, 36)
-actionBtn.Position = UDim2.new(0, 12, 0, 46)
-actionBtn.BackgroundColor3 = Color3.fromRGB(210, 80, 130) -- Rose Métallique Tazen
-actionBtn.Text = "Exécuter l'action"
-actionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-actionBtn.TextSize = 13
-actionBtn.Font = Enum.Font.GothamBold
-actionBtn.Parent = actionCard
+local indCorner = Instance.new("UICorner")
+indCorner.CornerRadius = UDim.new(1, 0)
+indCorner.Parent = tInd
 
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0, 6)
-btnCorner.Parent = actionBtn
+local tState = false
+toggleBox.MouseButton1Click:Connect(function()
+	tState = not tState
+	tInd.BackgroundColor3 = tState and Color3.fromRGB(210, 80, 130) or Color3.fromRGB(180, 50, 70)
+end)
+
+-- 2. Bouton
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(1, 0, 0, 36)
+btn.BackgroundColor3 = Color3.fromRGB(210, 80, 130)
+btn.Text = "Exécuter l'action"
+btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+btn.TextSize = 12
+btn.Font = Enum.Font.GothamBold
+btn.Parent = elementsFrame
+
+local bCorner = Instance.new("UICorner")
+bCorner.CornerRadius = UDim.new(0, 6)
+bCorner.Parent = btn
+
+-- 3. Zone de texte
+local tbox = Instance.new("TextBox")
+tbox.Size = UDim2.new(1, 0, 0, 36)
+tbox.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+tbox.PlaceholderText = "Entrer un texte..."
+tbox.Text = ""
+tbox.TextColor3 = Color3.fromRGB(255, 255, 255)
+tbox.PlaceholderColor3 = Color3.fromRGB(120, 120, 130)
+tbox.TextSize = 12
+tbox.Font = Enum.Font.Gotham
+tbox.ClearTextOnFocus = false
+tbox.Parent = elementsFrame
+
+local boxCorner = Instance.new("UICorner")
+boxCorner.CornerRadius = UDim.new(0, 6)
+boxCorner.Parent = tbox
