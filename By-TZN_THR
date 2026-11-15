@@ -1272,6 +1272,908 @@ do
 end
 
 ------------------------------------------------------------
+-- V1 FEATURES, PORTED INTO THE V2 UI (Kill / Stats / Misc / Info)
+-- NOTE: the V1 webhook that silently sent players' IP, city and country to a
+-- Discord webhook is NOT included here on purpose - that was a privacy risk.
+------------------------------------------------------------
+do
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local RunService = game:GetService("RunService")
+	local Lighting = game:GetService("Lighting")
+	local HttpService = game:GetService("HttpService")
+	local VirtualUser = game:GetService("VirtualUser")
+
+	local conns2 = {}
+	local function connect2(signal, fn)
+		local ok, c = pcall(function()
+			return signal:Connect(fn)
+		end)
+		if ok and c then
+			table.insert(conns2, c)
+			return c
+		end
+	end
+
+	--------------------------------------------------------
+	-- CONFIG SAVE / LOAD (so toggles remember their state)
+	--------------------------------------------------------
+	local CONFIG_PREFIX = "TazenHub_Config_"
+
+	local function loadConfig(cat)
+		local ok, result = pcall(function()
+			local file = CONFIG_PREFIX .. cat .. ".json"
+			if readfile and isfile and isfile(file) then
+				return HttpService:JSONDecode(readfile(file))
+			end
+		end)
+		if ok and type(result) == "table" then
+			return result
+		end
+		return {}
+	end
+
+	local function saveConfig(cat, data)
+		pcall(function()
+			if writefile then
+				writefile(CONFIG_PREFIX .. cat .. ".json", HttpService:JSONEncode(data))
+			end
+		end)
+	end
+
+	--------------------------------------------------------
+	-- ICONS
+	--------------------------------------------------------
+	local function drawSword(icon)
+		rect(icon, 13, 7, 15, 2.4, -45, 1.2) -- blade
+		rect(icon, 7.5, 12.5, 5, 2.6, 45, 1.2) -- guard
+		rect(icon, 5, 15, 2.4, 6.5, -45, 1) -- handle
+	end
+
+	local function drawChart(icon)
+		rect(icon, 5, 14, 3, 8, 0, 1)
+		rect(icon, 10, 12, 3, 12, 0, 1)
+		rect(icon, 15, 10, 3, 16, 0, 1)
+	end
+
+	local function drawToolbox(icon)
+		rect(icon, 10, 13, 16, 7, 0, 2)
+		rect(icon, 10, 9, 6, 2, 0, 1)
+	end
+
+	local function drawInfoIcon(icon)
+		ring(icon, 10, 10, 16, 2)
+		rect(icon, 10, 6, 2, 2, 0, 1)
+		rect(icon, 10, 13.5, 2, 7, 0, 1)
+	end
+
+	local killPage = addTab("Kill", drawSword)
+	local statsPage = addTab("Stats", drawChart)
+	local miscPage = addTab("Misc", drawToolbox)
+	local infoPage = addTab("Info", drawInfoIcon)
+
+	--------------------------------------------------------
+	-- SHARED UI BUILDERS (same look as the other tabs)
+	--------------------------------------------------------
+	local function rowFrame(page, order, h)
+		local r = make("Frame", {
+			Size = UDim2.new(1, 0, 0, h or 40),
+			BackgroundColor3 = C.Card,
+			BorderSizePixel = 0,
+			LayoutOrder = order,
+		}, page)
+		corner(r, 8)
+		stroke(r, C.Stroke, 1)
+		return r
+	end
+
+	local function addTitle(page, text)
+		label(page, text, 14, B, C.White, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 1
+	end
+
+	local function addInfo(page, order, text, h)
+		local r = rowFrame(page, order, h or 34)
+		local l = label(r, text, 11, G, C.Gray, UDim2.new(0, 12, 0, 0), UDim2.new(1, -24, 1, 0))
+		l.TextWrapped = true
+		return l
+	end
+
+	local function addButton(page, order, text, fn)
+		local b = make("TextButton", {
+			Size = UDim2.new(1, 0, 0, 36),
+			BackgroundColor3 = C.PinkDark,
+			Text = text,
+			TextColor3 = C.White,
+			TextSize = 12,
+			Font = B,
+			AutoButtonColor = false,
+			LayoutOrder = order,
+		}, page)
+		corner(b, 8)
+		stroke(b, C.Pink, 1)
+		gradient(b, C.Pink, C.PinkDark, 0)
+		b.MouseButton1Click:Connect(fn)
+		return b
+	end
+
+	-- a toggle that remembers its state in a config file, under [cat][key]
+	local function addSavedToggle(page, order, text, cat, key, default, callback)
+		local cfg = loadConfig(cat)
+		local initial = default
+		if cfg[key] ~= nil then
+			initial = cfg[key]
+		end
+
+		local r = rowFrame(page, order, 40)
+		label(r, text, 12, G, C.White, UDim2.new(0, 12, 0, 0), UDim2.new(1, -70, 1, 0))
+		local sw = make("TextButton", {
+			Size = UDim2.new(0, 38, 0, 20),
+			Position = UDim2.new(1, -50, 0.5, -10),
+			BackgroundColor3 = initial and C.PinkDark or C.Tile,
+			Text = "",
+			AutoButtonColor = false,
+		}, r)
+		corner(sw, 10)
+		local swStroke = stroke(sw, initial and C.Pink or C.Stroke, 1)
+		local knob = make("Frame", {
+			Size = UDim2.new(0, 14, 0, 14),
+			Position = initial and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7),
+			BackgroundColor3 = initial and C.White or C.Gray,
+		}, sw)
+		corner(knob, 7)
+
+		local obj = { Value = initial }
+		function obj:Set(v, silent)
+			self.Value = v
+			TweenService:Create(knob, TweenInfo.new(0.15), {
+				Position = v and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7),
+				BackgroundColor3 = v and C.White or C.Gray,
+			}):Play()
+			TweenService:Create(sw, TweenInfo.new(0.15), {
+				BackgroundColor3 = v and C.PinkDark or C.Tile,
+			}):Play()
+			swStroke.Color = v and C.Pink or C.Stroke
+			if not silent then
+				local c = loadConfig(cat)
+				c[key] = v
+				saveConfig(cat, c)
+			end
+			if callback and not silent then
+				callback(v)
+			end
+		end
+		sw.MouseButton1Click:Connect(function()
+			obj:Set(not obj.Value)
+		end)
+
+		if initial and callback then
+			task.spawn(function()
+				task.wait(1.5)
+				pcall(callback, true)
+			end)
+		end
+		return obj
+	end
+
+	local function equipToolByName(keyword)
+		pcall(function()
+			local char = player.Character
+			local backpack = player:FindFirstChild("Backpack")
+			if not char or not backpack then
+				return
+			end
+			keyword = keyword:lower()
+			for _, t in ipairs(char:GetChildren()) do
+				if t:IsA("Tool") and t.Name:lower():find(keyword, 1, true) then
+					return
+				end
+			end
+			for _, t in ipairs(backpack:GetChildren()) do
+				if t:IsA("Tool") and t.Name:lower():find(keyword, 1, true) then
+					t.Parent = char
+					return
+				end
+			end
+		end)
+	end
+
+	local function findMuscleEvent()
+		local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+		return player:FindFirstChild("muscleEvent")
+			or (player.Character and player.Character:FindFirstChild("muscleEvent"))
+			or (rEvents and rEvents:FindFirstChild("muscleEvent"))
+	end
+
+	------------------------------------------------------------------
+	-- KILL TAB
+	------------------------------------------------------------------
+	addTitle(killPage, "Killing")
+	addInfo(killPage, 2, "Punches the nearest matching player repeatedly. Can be used to grief others - use at your own risk.", 40)
+
+	local whitelistPlayers = {}
+	local targetPlayers = {}
+	local killRunId = 0
+	local killStatus = "Idle."
+	local killAllToggle, killTargetToggle
+
+	local function equipFists()
+		equipToolByName("punch")
+	end
+
+	-- mode: "all" hits everyone except whitelisted, "target" hits only marked players
+	local function killLoop(myId, mode)
+		while killRunId == myId and farm.alive do
+			pcall(function()
+				local character = player.Character
+				local hrp = character and character:FindFirstChild("HumanoidRootPart")
+				if not hrp then
+					killStatus = "Waiting for character..."
+					task.wait(1)
+					return
+				end
+
+				local target, minDist = nil, math.huge
+				for _, plr in ipairs(Players:GetPlayers()) do
+					local wanted = (mode == "all" and plr ~= player and not whitelistPlayers[plr.Name])
+						or (mode == "target" and targetPlayers[plr.Name] and not whitelistPlayers[plr.Name])
+					if wanted then
+						local pChar = plr.Character
+						local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+						local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+						if pHrp and pHum and pHum.Health > 0 then
+							local d = (hrp.Position - pHrp.Position).Magnitude
+							if d < minDist then
+								minDist = d
+								target = plr
+							end
+						end
+					end
+				end
+
+				if not target then
+					killStatus = "No target available..."
+					task.wait(0.5)
+					return
+				end
+
+				local pChar = target.Character
+				local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+				local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+				killStatus = "Attacking: " .. target.Name
+				equipFists()
+
+				local wasAlive = true
+				local deathConn
+				if pHum then
+					deathConn = pHum.Died:Connect(function()
+						wasAlive = false
+						if deathConn then
+							deathConn:Disconnect()
+						end
+					end)
+				end
+
+				while killRunId == myId and farm.alive and target.Parent and pHum and pHum.Health > 0 and wasAlive do
+					local stillWanted = (mode == "all" and not whitelistPlayers[target.Name])
+						or (mode == "target" and targetPlayers[target.Name] and not whitelistPlayers[target.Name])
+					if not stillWanted then
+						break
+					end
+					equipFists()
+					if hrp and pHrp then
+						hrp.CFrame = pHrp.CFrame * CFrame.new(0, 3, 2)
+					end
+					local tool = character:FindFirstChild("Fight") or character:FindFirstChild("Punch")
+					if tool and tool:IsA("Tool") then
+						pcall(function()
+							tool:Activate()
+						end)
+					end
+					task.wait(0.1)
+				end
+				if deathConn then
+					deathConn:Disconnect()
+				end
+			end)
+			task.wait(0.1)
+		end
+	end
+
+	killAllToggle = addSavedToggle(killPage, 3, "Auto Kill All Players", "Killing", "KillAll", false, function(v)
+		killRunId += 1
+		if v then
+			if killTargetToggle and killTargetToggle.Value then
+				killTargetToggle:Set(false, true)
+			end
+			killStatus = "Starting..."
+			task.spawn(killLoop, killRunId, "all")
+		else
+			killStatus = "Stopped."
+		end
+	end)
+
+	killTargetToggle = addSavedToggle(killPage, 4, "Kill Target Players Only", "Killing", "KillTarget", false, function(v)
+		killRunId += 1
+		if v then
+			if killAllToggle and killAllToggle.Value then
+				killAllToggle:Set(false, true)
+			end
+			killStatus = "Starting..."
+			task.spawn(killLoop, killRunId, "target")
+		else
+			killStatus = "Stopped."
+		end
+	end)
+
+	local killStatusLbl = addInfo(killPage, 5, "Status: " .. killStatus, 30)
+
+	addTitle(killPage, "White List")
+	addSavedToggle(killPage, 7, "Auto White List Friends", "Killing", "AutoWhitelist", false, function(v)
+		if v then
+			local count = 0
+			for _, plr in ipairs(Players:GetPlayers()) do
+				local ok, isFriend = pcall(function()
+					return plr ~= player and player:IsFriendsWith(plr.UserId)
+				end)
+				if ok and isFriend then
+					whitelistPlayers[plr.Name] = true
+					count += 1
+				end
+			end
+			killStatusLbl.Text = "Whitelisted " .. count .. " friend(s)."
+		end
+	end)
+
+	local playerListContainer = make("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 0, 140),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = C.Pink,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 8,
+	}, killPage)
+	make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, playerListContainer)
+
+	local playerRows = {}
+	local function removePlayerRow(plr)
+		local entry = playerRows[plr]
+		if entry then
+			pcall(function()
+				entry.row:Destroy()
+			end)
+			playerRows[plr] = nil
+		end
+	end
+
+	local function addPlayerRow(plr)
+		local row = make("Frame", {
+			Size = UDim2.new(1, -4, 0, 32),
+			BackgroundColor3 = C.Tile,
+			BorderSizePixel = 0,
+		}, playerListContainer)
+		corner(row, 6)
+		label(row, plr.Name, 11, G, C.White, UDim2.new(0, 8, 0, 0), UDim2.new(0.38, 0, 1, 0))
+
+		local wBtn = make("TextButton", {
+			Size = UDim2.fromOffset(55, 22),
+			Position = UDim2.new(0.42, 0, 0.5, -11),
+			BackgroundColor3 = whitelistPlayers[plr.Name] and C.PinkDark or C.Card,
+			Text = "Safe",
+			Font = B,
+			TextSize = 10,
+			TextColor3 = C.White,
+			BorderSizePixel = 0,
+		}, row)
+		corner(wBtn, 6)
+
+		local tBtn = make("TextButton", {
+			Size = UDim2.fromOffset(55, 22),
+			Position = UDim2.new(0.72, 0, 0.5, -11),
+			BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(190, 55, 60) or C.Card,
+			Text = "Target",
+			Font = B,
+			TextSize = 10,
+			TextColor3 = C.White,
+			BorderSizePixel = 0,
+		}, row)
+		corner(tBtn, 6)
+
+		local function sync()
+			wBtn.BackgroundColor3 = whitelistPlayers[plr.Name] and C.PinkDark or C.Card
+			tBtn.BackgroundColor3 = targetPlayers[plr.Name] and Color3.fromRGB(190, 55, 60) or C.Card
+		end
+
+		wBtn.MouseButton1Click:Connect(function()
+			whitelistPlayers[plr.Name] = not whitelistPlayers[plr.Name]
+			sync()
+		end)
+		tBtn.MouseButton1Click:Connect(function()
+			targetPlayers[plr.Name] = not targetPlayers[plr.Name]
+			sync()
+		end)
+
+		playerRows[plr] = { row = row, sync = sync }
+	end
+
+	local function refreshPlayerListUI()
+		pcall(function()
+			for plr in pairs(playerRows) do
+				if not plr.Parent then
+					removePlayerRow(plr)
+				end
+			end
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= player and not playerRows[plr] then
+					addPlayerRow(plr)
+				end
+			end
+		end)
+	end
+
+	connect2(Players.PlayerAdded, refreshPlayerListUI)
+	connect2(Players.PlayerRemoving, removePlayerRow)
+	task.spawn(refreshPlayerListUI)
+
+	------------------------------------------------------------------
+	-- STATS TAB
+	------------------------------------------------------------------
+	addTitle(statsPage, "Server Stats Viewer")
+	addInfo(statsPage, 2, "Tap a player below to see their leaderstats.", 30)
+	local statsDetail = addInfo(statsPage, 3, "Select a player from the list.", 90)
+
+	local statsListContainer = make("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 0, 150),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 3,
+		ScrollBarImageColor3 = C.Pink,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 4,
+	}, statsPage)
+	make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, statsListContainer)
+
+	local statsRows = {}
+	local function removeStatsRow(plr)
+		local entry = statsRows[plr]
+		if entry then
+			pcall(function()
+				entry.row:Destroy()
+			end)
+			statsRows[plr] = nil
+		end
+	end
+
+	local function addStatsRow(plr)
+		local row = make("TextButton", {
+			Size = UDim2.new(1, -4, 0, 32),
+			BackgroundColor3 = C.Tile,
+			Text = "",
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+		}, statsListContainer)
+		corner(row, 6)
+		label(row, plr.Name .. " (" .. plr.DisplayName .. ")", 11, G, C.White, UDim2.new(0, 8, 0, 0), UDim2.new(1, -12, 1, 0))
+
+		row.MouseButton1Click:Connect(function()
+			pcall(function()
+				local ls = plr:FindFirstChild("leaderstats")
+				local text = "Player: " .. plr.Name .. "\n"
+				if ls then
+					for _, stat in ipairs(ls:GetChildren()) do
+						text = text .. "- " .. stat.Name .. " : " .. tostring(stat.Value) .. "\n"
+					end
+				else
+					text = text .. "No leaderstats found for this player."
+				end
+				statsDetail.Text = text
+			end)
+		end)
+		statsRows[plr] = { row = row }
+	end
+
+	local function refreshStatsListUI()
+		pcall(function()
+			for plr in pairs(statsRows) do
+				if not plr.Parent then
+					removeStatsRow(plr)
+				end
+			end
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if not statsRows[plr] then
+					addStatsRow(plr)
+				end
+			end
+		end)
+	end
+
+	connect2(Players.PlayerAdded, refreshStatsListUI)
+	connect2(Players.PlayerRemoving, removeStatsRow)
+	task.spawn(refreshStatsListUI)
+
+	task.spawn(function()
+		while farm.alive do
+			task.wait(2)
+			refreshPlayerListUI()
+			refreshStatsListUI()
+		end
+	end)
+
+	------------------------------------------------------------------
+	-- MISC TAB
+	------------------------------------------------------------------
+	addTitle(miscPage, "Utilities")
+
+	-- Anti AFK
+	local antiAfkConn = nil
+	local function setAntiAfk(state)
+		if antiAfkConn then
+			antiAfkConn:Disconnect()
+			antiAfkConn = nil
+		end
+		if state then
+			antiAfkConn = connect2(player.Idled, function()
+				pcall(function()
+					VirtualUser:CaptureController()
+					VirtualUser:ClickButton2(Vector2.new(0, 0))
+				end)
+			end)
+		end
+	end
+	addSavedToggle(miscPage, 2, "Anti AFK", "MiscTab", "AntiAfk", false, setAntiAfk)
+
+	-- Anti Lag
+	local antiLagConn = nil
+	local antiLagRun = 0
+	local antiLagTouched = setmetatable({}, { __mode = "k" })
+	local antiLagBackup = nil
+
+	local function lagApply(inst)
+		pcall(function()
+			if inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
+				or inst:IsA("Smoke") or inst:IsA("Fire") or inst:IsA("Sparkles") then
+				if inst.Enabled then
+					antiLagTouched[inst] = { Enabled = true }
+					inst.Enabled = false
+				end
+			elseif inst:IsA("BasePart") and not inst:IsA("Terrain") then
+				antiLagTouched[inst] = {
+					Material = inst.Material,
+					Reflectance = inst.Reflectance,
+					CastShadow = inst.CastShadow,
+				}
+				inst.Material = Enum.Material.SmoothPlastic
+				inst.Reflectance = 0
+				inst.CastShadow = false
+			end
+		end)
+	end
+
+	local function antiLagStart()
+		antiLagRun += 1
+		local myId = antiLagRun
+		pcall(function()
+			antiLagBackup = { GlobalShadows = Lighting.GlobalShadows, FogEnd = Lighting.FogEnd }
+			Lighting.GlobalShadows = false
+			Lighting.FogEnd = 9e9
+		end)
+		task.spawn(function()
+			local n = 0
+			local function sweep(root)
+				for _, d in ipairs(root:GetDescendants()) do
+					if antiLagRun ~= myId then
+						return
+					end
+					lagApply(d)
+					n += 1
+					if n % 400 == 0 then
+						task.wait()
+					end
+				end
+			end
+			sweep(Lighting)
+			sweep(workspace)
+		end)
+		antiLagConn = connect2(workspace.DescendantAdded, lagApply)
+	end
+
+	local function antiLagStop()
+		antiLagRun += 1
+		if antiLagConn then
+			antiLagConn:Disconnect()
+			antiLagConn = nil
+		end
+		local touched, backup = antiLagTouched, antiLagBackup
+		antiLagTouched = setmetatable({}, { __mode = "k" })
+		antiLagBackup = nil
+		task.spawn(function()
+			for inst, props in pairs(touched) do
+				if inst and inst.Parent then
+					for k, v in pairs(props) do
+						pcall(function()
+							inst[k] = v
+						end)
+					end
+				end
+			end
+			if backup then
+				pcall(function()
+					Lighting.GlobalShadows = backup.GlobalShadows
+					Lighting.FogEnd = backup.FogEnd
+				end)
+			end
+		end)
+	end
+
+	local antiLagToggle = addSavedToggle(miscPage, 3, "Anti Lag", "MiscTab", "AntiLag", false, function(v)
+		if v then
+			antiLagStart()
+		else
+			antiLagStop()
+		end
+	end)
+
+	-- Hide Pets / Hide Popups
+	addSavedToggle(miscPage, 4, "Hide Pets", "MiscTab", "HidePets", false, function(v)
+		pcall(function()
+			local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+			local ev = rEvents and rEvents:FindFirstChild("showPetsEvent")
+			if ev then
+				ev:FireServer(v and "hidePets" or "showPets")
+			end
+		end)
+	end)
+
+	addSavedToggle(miscPage, 5, "Hide Popups", "MiscTab", "HidePopups", false, function()
+		pcall(function()
+			local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+			local ev = rEvents and rEvents:FindFirstChild("savePlayerSizeEvent")
+			if ev then
+				ev:FireServer("showPopupsOption")
+			end
+		end)
+	end)
+
+	-- Username Spoofer : replaces your name on labels so it's harder to screen-clip
+	local spooferEnabled = false
+	local spoofedName = "Anonyme"
+	local function sanitizeText(txt)
+		if type(txt) ~= "string" then
+			return txt
+		end
+		local realName, displayName = player.Name, player.DisplayName
+		local modified = txt
+		if realName ~= "" and modified:find(realName, 1, true) then
+			modified = modified:gsub(realName, spoofedName)
+		end
+		if displayName ~= "" and modified:find(displayName, 1, true) then
+			modified = modified:gsub(displayName, spoofedName)
+		end
+		return modified
+	end
+
+	local function applySpoofer(inst)
+		pcall(function()
+			if not spooferEnabled then
+				return
+			end
+			if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+				local newText = sanitizeText(inst.Text)
+				if newText ~= inst.Text then
+					inst.Text = newText
+				end
+			end
+		end)
+	end
+
+	local function scanAndHook(container)
+		pcall(function()
+			for _, d in ipairs(container:GetDescendants()) do
+				applySpoofer(d)
+			end
+			connect2(container.DescendantAdded, function(d)
+				applySpoofer(d)
+				if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+					connect2(d:GetPropertyChangedSignal("Text"), function()
+						applySpoofer(d)
+					end)
+				end
+			end)
+		end)
+	end
+
+	addSavedToggle(miscPage, 6, "Username Spoofer", "MiscTab", "UsernameSpoofer", false, function(v)
+		spooferEnabled = v
+		if v then
+			scanAndHook(player:WaitForChild("PlayerGui"))
+			scanAndHook(workspace)
+		end
+	end)
+
+	-- Auto Wheel
+	local wheelRunId = 0
+	local function autoWheelLoop(myId)
+		while wheelRunId == myId and farm.alive do
+			pcall(function()
+				local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+				local wheelRemote = rEvents and rEvents:FindFirstChild("openFortuneWheelRemote")
+				local fortuneWheel = ReplicatedStorage:FindFirstChild("shared")
+					and ReplicatedStorage.shared:FindFirstChild("catalogs")
+					and ReplicatedStorage.shared.catalogs:FindFirstChild("fortuneWheelChances")
+					and ReplicatedStorage.shared.catalogs.fortuneWheelChances:FindFirstChild("Fortune Wheel")
+				if wheelRemote and fortuneWheel then
+					wheelRemote:InvokeServer("openFortuneWheel", fortuneWheel)
+				end
+			end)
+			task.wait(1)
+		end
+	end
+	addSavedToggle(miscPage, 7, "Auto Wheel", "MiscTab", "AutoWheel", false, function(v)
+		wheelRunId += 1
+		if v then
+			task.spawn(autoWheelLoop, wheelRunId)
+		end
+	end)
+
+	-- Auto Eat Protein Egg
+	local eggRunId = 0
+	local eggEaten = 0
+	local eggStatus = "--"
+	local eggNextAt = 0
+	local EGG_DURATION = 30 * 60 + 3
+
+	local function eggTools()
+		local found = {}
+		local lists = {}
+		if player.Character then
+			lists[#lists + 1] = player.Character
+		end
+		local bp = player:FindFirstChild("Backpack")
+		if bp then
+			lists[#lists + 1] = bp
+		end
+		for _, c in ipairs(lists) do
+			for _, t in ipairs(c:GetChildren()) do
+				if t:IsA("Tool") and t.Name:lower():find("egg", 1, true) then
+					found[#found + 1] = t
+				end
+			end
+		end
+		return found
+	end
+
+	local function findEggTool()
+		for _, t in ipairs(eggTools()) do
+			if t.Name:lower():find("protein egg", 1, true) then
+				return t
+			end
+		end
+		return eggTools()[1]
+	end
+
+	local function eatEgg()
+		local tool = findEggTool()
+		if not tool then
+			return "none"
+		end
+		local ev = findMuscleEvent()
+		if not ev then
+			return "unconfirmed"
+		end
+		pcall(function()
+			ev:FireServer("proteinEgg", tool)
+		end)
+		return "eaten"
+	end
+
+	local eggLbl
+	local function autoEggLoop(myId)
+		local noEgg = 0
+		eggNextAt, eggStatus = 0, "--"
+		while eggRunId == myId and farm.alive do
+			if tick() >= eggNextAt then
+				local ok, res = pcall(eatEgg)
+				if (not ok) or res == "none" then
+					noEgg += 1
+					eggStatus = "no egg"
+					if noEgg >= 3 then
+						return
+					end
+				elseif res == "eaten" then
+					noEgg = 0
+					eggEaten += 1
+					eggStatus = "eaten"
+					eggNextAt = tick() + EGG_DURATION
+				end
+			end
+			task.wait(1)
+		end
+	end
+	addSavedToggle(miscPage, 8, "Auto Eat Protein Egg", "MiscTab", "AutoEatEgg", false, function(v)
+		eggRunId += 1
+		if v then
+			eggEaten = 0
+			task.spawn(autoEggLoop, eggRunId)
+		end
+	end)
+
+	local fpsFrames = 0
+	connect2(RunService.Heartbeat, function()
+		fpsFrames += 1
+	end)
+	local fpsLbl = addInfo(miscPage, 9, "FPS: --", 30)
+	eggLbl = addInfo(miscPage, 10, "Egg: eaten 0 | boost: inactive", 30)
+	local killMiscLbl = addInfo(miscPage, 11, "Kill status: " .. killStatus, 30)
+
+	task.spawn(function()
+		while farm.alive do
+			task.wait(1)
+			pcall(function()
+				fpsLbl.Text = "FPS: " .. tostring(fpsFrames)
+				fpsFrames = 0
+				local left = eggNextAt - tick()
+				eggLbl.Text = string.format("Egg: eaten %d | boost: %s | last: %s",
+					eggEaten, (left > 0) and (math.floor(left) .. "s") or "inactive", eggStatus)
+				killStatusLbl.Text = "Status: " .. killStatus
+				killMiscLbl.Text = "Kill status: " .. killStatus
+			end)
+		end
+	end)
+
+	------------------------------------------------------------------
+	-- INFO TAB
+	------------------------------------------------------------------
+	addTitle(infoPage, "Credits & Socials")
+	addInfo(infoPage, 2, CONFIG.Title .. " — " .. CONFIG.Subtitle, 30)
+	addButton(infoPage, 3, "Copy Discord Link", function()
+		local ok = copy(CONFIG.Discord)
+		killStatusLbl.Text = ok and "Discord link copied!" or CONFIG.Discord
+	end)
+
+	------------------------------------------------------------------
+	-- APPLY SAVED SETTINGS AT STARTUP
+	------------------------------------------------------------------
+	task.spawn(function()
+		task.wait(1.5)
+		local misc = loadConfig("MiscTab")
+		if misc.AntiAfk then
+			setAntiAfk(true)
+		end
+		if misc.AntiLag then
+			antiLagStart()
+		end
+		if misc.UsernameSpoofer then
+			spooferEnabled = true
+			scanAndHook(player:WaitForChild("PlayerGui"))
+			scanAndHook(workspace)
+		end
+	end)
+
+	------------------------------------------------------------------
+	-- CLEANUP ON CLOSE
+	------------------------------------------------------------------
+	local prevShutdown = farm.shutdown
+	farm.shutdown = function()
+		if prevShutdown then
+			prevShutdown()
+		end
+		killRunId += 1
+		wheelRunId += 1
+		eggRunId += 1
+		setAntiAfk(false)
+		if antiLagToggle and antiLagToggle.Value then
+			antiLagStop()
+		end
+		for _, c in ipairs(conns2) do
+			pcall(function()
+				c:Disconnect()
+			end)
+		end
+	end
+end
+
+------------------------------------------------------------
 -- SETTINGS PAGE
 ------------------------------------------------------------
 local settings = addTab("Settings", drawGear)
