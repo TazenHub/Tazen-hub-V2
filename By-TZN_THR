@@ -1,66 +1,201 @@
+-- ╔══════════════════════════════════════╗
+-- ║   TAZEN HUB V2 ║
+-- ║  
+-- ╚══════════════════════════════════════╝
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Stats = game:GetService("Stats")
+local LocalizationService = game:GetService("LocalizationService")
 local player = Players.LocalPlayer
 
--- ScreenGui principal
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "Tazen Hub V2"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+------------------------------------------------------------
+-- CONFIG (à modifier)
+------------------------------------------------------------
+local CONFIG = {
+	Title = "Tazen Hub",
+	Subtitle = "Fast Rebirth",
+	LogoId = "", -- ex : "rbxassetid://123456789" (ton logo uploadé sur Roblox)
+	Discord = "https://discord.gg/ton-lien",
+}
 
--- Fenêtre principale
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 520, 0, 320)
-mainFrame.Position = UDim2.new(0.5, -260, 0.5, -160)
-mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Parent = screenGui
+local C = {
+	Bg = Color3.fromRGB(10, 10, 13),
+	Panel = Color3.fromRGB(15, 15, 19),
+	Card = Color3.fromRGB(20, 20, 25),
+	Tile = Color3.fromRGB(8, 8, 10),
+	Stroke = Color3.fromRGB(46, 36, 44),
+	Pink = Color3.fromRGB(240, 130, 170),
+	PinkDark = Color3.fromRGB(150, 45, 92),
+	PinkDeep = Color3.fromRGB(95, 25, 62),
+	White = Color3.fromRGB(245, 245, 248),
+	Gray = Color3.fromRGB(150, 150, 162),
+}
 
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 8)
-mainCorner.Parent = mainFrame
+------------------------------------------------------------
+-- HELPERS
+------------------------------------------------------------
+local function make(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props) do
+		o[k] = v
+	end
+	o.Parent = parent
+	return o
+end
 
--- Barre supérieure
-local topBar = Instance.new("Frame")
-topBar.Size = UDim2.new(1, 0, 0, 34)
-topBar.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
-topBar.BorderSizePixel = 0
-topBar.Parent = mainFrame
+local function corner(p, r)
+	return make("UICorner", { CornerRadius = UDim.new(0, r) }, p)
+end
 
-local topCorner = Instance.new("UICorner")
-topCorner.CornerRadius = UDim.new(0, 8)
-topBar.Parent = mainFrame
+local function stroke(p, col, t)
+	return make("UIStroke", {
+		Color = col,
+		Thickness = t or 1,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	}, p)
+end
 
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, -50, 1, 0)
-titleLabel.Position = UDim2.new(0, 12, 0, 0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "TAZEN — Hub V2"
-titleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
-titleLabel.TextSize = 13
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.Parent = topBar
+local function gradient(p, c0, c1, rot)
+	return make("UIGradient", { Color = ColorSequence.new(c0, c1), Rotation = rot or 0 }, p)
+end
 
--- Bouton Fermer
-local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(0, 26, 0, 26)
-closeButton.Position = UDim2.new(1, -30, 0.5, -13)
-closeButton.BackgroundColor3 = Color3.fromRGB(210, 60, 90)
-closeButton.Text = "×"
-closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeButton.TextSize = 16
-closeButton.Font = Enum.Font.GothamBold
-closeButton.Parent = topBar
+local function label(parent, text, size, font, color, pos, sz, align)
+	return make("TextLabel", {
+		BackgroundTransparency = 1,
+		Text = text,
+		TextSize = size,
+		Font = font,
+		TextColor3 = color,
+		Position = pos,
+		Size = sz,
+		TextXAlignment = align or Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	}, parent)
+end
 
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 6)
-closeCorner.Parent = closeButton
+local function copy(text)
+	local fn = setclipboard or toclipboard
+	if fn then
+		return pcall(fn, text)
+	end
+	return false
+end
+
+local function getGuiParent()
+	if gethui then
+		local ok, h = pcall(gethui)
+		if ok and h then
+			return h
+		end
+	end
+	return player:WaitForChild("PlayerGui")
+end
+
+local B, G = Enum.Font.GothamBold, Enum.Font.Gotham
+
+------------------------------------------------------------
+-- SCREENGUI + FENÊTRE
+------------------------------------------------------------
+local guiParent = getGuiParent()
+local old = guiParent:FindFirstChild("TazenHubV3")
+if old then
+	old:Destroy()
+end
+
+local screenGui = make("ScreenGui", {
+	Name = "TazenHubV3",
+	ResetOnSpawn = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, guiParent)
+
+local WIN_W, WIN_H, TOP_H = 580, 350, 46
+
+local mainFrame = make("Frame", {
+	Size = UDim2.new(0, WIN_W, 0, WIN_H),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	BackgroundColor3 = C.Bg,
+	BorderSizePixel = 0,
+	Active = true,
+	ClipsDescendants = true,
+}, screenGui)
+corner(mainFrame, 12)
+stroke(mainFrame, C.Stroke, 1)
+gradient(mainFrame, Color3.fromRGB(16, 12, 16), C.Bg, 90)
+
+local uiScale = make("UIScale", {}, mainFrame)
+local function fit()
+	local cam = workspace.CurrentCamera
+	if cam then
+		local vp = cam.ViewportSize
+		uiScale.Scale = math.clamp(math.min(vp.X / 620, vp.Y / 390), 0.5, 1)
+	end
+end
+fit()
+
+------------------------------------------------------------
+-- BARRE DU HAUT
+------------------------------------------------------------
+local topBar = make("Frame", {
+	Size = UDim2.new(1, 0, 0, TOP_H),
+	BackgroundTransparency = 1,
+}, mainFrame)
+
+-- Logo
+local logoBox = make("Frame", {
+	Size = UDim2.new(0, 30, 0, 30),
+	Position = UDim2.new(0, 14, 0.5, -15),
+	BackgroundColor3 = C.PinkDeep,
+}, topBar)
+corner(logoBox, 15)
+stroke(logoBox, C.Pink, 1.5)
+
+if CONFIG.LogoId ~= "" then
+	make("ImageLabel", {
+		Size = UDim2.new(1, -4, 1, -4),
+		Position = UDim2.new(0, 2, 0, 2),
+		BackgroundTransparency = 1,
+		Image = CONFIG.LogoId,
+		ScaleType = Enum.ScaleType.Fit,
+	}, logoBox)
+else
+	label(logoBox, "TZ", 12, B, C.White, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 1, 0), Enum.TextXAlignment.Center)
+end
+
+label(topBar, CONFIG.Title, 15, B, C.White, UDim2.new(0, 54, 0, 8), UDim2.new(0, 160, 0, 18))
+label(topBar, CONFIG.Subtitle, 11, G, C.Pink, UDim2.new(0, 54, 0, 25), UDim2.new(0, 160, 0, 14))
+
+local function topButton(text, xOffset, bg)
+	local b = make("TextButton", {
+		Size = UDim2.new(0, 30, 0, 30),
+		Position = UDim2.new(1, xOffset, 0.5, -15),
+		BackgroundColor3 = bg,
+		Text = text,
+		TextColor3 = C.White,
+		TextSize = 16,
+		Font = B,
+		AutoButtonColor = false,
+	}, topBar)
+	corner(b, 8)
+	stroke(b, C.Stroke, 1)
+	return b
+end
+
+local minButton = topButton("–", -78, C.Card)
+local closeButton = topButton("×", -42, C.PinkDark)
 
 closeButton.MouseButton1Click:Connect(function()
 	screenGui:Destroy()
 end)
+
+make("Frame", {
+	Size = UDim2.new(1, -24, 0, 1),
+	Position = UDim2.new(0, 12, 1, -1),
+	BackgroundColor3 = C.Stroke,
+	BorderSizePixel = 0,
+}, topBar)
 
 -- Glisser la fenêtre
 local dragging, dragInput, dragStart, startPos
@@ -85,145 +220,439 @@ end)
 
 UserInputService.InputChanged:Connect(function(input)
 	if input == dragInput and dragging then
-		local delta = input.Position - dragStart
-		mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		local delta = (input.Position - dragStart) / uiScale.Scale
+		mainFrame.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
 	end
 end)
 
--- Sidebar style ArrayField
-local sideBar = Instance.new("ScrollingFrame")
-sideBar.Size = UDim2.new(0, 140, 1, -34)
-sideBar.Position = UDim2.new(0, 0, 0, 34)
-sideBar.BackgroundColor3 = Color3.fromRGB(21, 21, 26)
-sideBar.BorderSizePixel = 0
-sideBar.CanvasSize = UDim2.new(0, 0, 0, 0)
-sideBar.ScrollBarThickness = 2
-sideBar.Parent = mainFrame
+------------------------------------------------------------
+-- CORPS : SIDEBAR + PAGES
+------------------------------------------------------------
+local body = make("Frame", {
+	Size = UDim2.new(1, 0, 1, -TOP_H),
+	Position = UDim2.new(0, 0, 0, TOP_H),
+	BackgroundTransparency = 1,
+}, mainFrame)
 
-local sideList = Instance.new("UIListLayout")
-sideList.SortOrder = Enum.SortOrder.LayoutOrder
-sideList.Padding = UDim.new(0, 4)
-sideList.Parent = sideBar
+local minimized = false
+minButton.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	body.Visible = not minimized
+	mainFrame.Size = minimized and UDim2.new(0, WIN_W, 0, TOP_H) or UDim2.new(0, WIN_W, 0, WIN_H)
+end)
 
-local sidePadding = Instance.new("UIPadding")
-sidePadding.PaddingTop = UDim.new(0, 8)
-sidePadding.PaddingLeft = UDim.new(0, 8)
-sidePadding.PaddingRight = UDim.new(0, 8)
-sidePadding.Parent = sideBar
+local sideBar = make("Frame", {
+	Size = UDim2.new(0, 52, 1, -12),
+	Position = UDim2.new(0, 10, 0, 6),
+	BackgroundColor3 = C.Panel,
+}, body)
+corner(sideBar, 10)
+stroke(sideBar, C.Stroke, 1)
+make("UIListLayout", {
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 6),
+	HorizontalAlignment = Enum.HorizontalAlignment.Center,
+}, sideBar)
+make("UIPadding", { PaddingTop = UDim.new(0, 6) }, sideBar)
 
--- Bouton d'onglet dans la sidebar
-local tabBtn = Instance.new("TextButton")
-tabBtn.Size = UDim2.new(1, 0, 0, 32)
-tabBtn.BackgroundColor3 = Color3.fromRGB(210, 80, 130)
-tabBtn.Text = "  Accueil"
-tabBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-tabBtn.TextSize = 12
-tabBtn.Font = Enum.Font.GothamBold
-tabBtn.TextXAlignment = Enum.TextXAlignment.Left
-tabBtn.Parent = sideBar
+local pages = make("Frame", {
+	Size = UDim2.new(1, -82, 1, -12),
+	Position = UDim2.new(0, 72, 0, 6),
+	BackgroundTransparency = 1,
+}, body)
 
-local tabCorner = Instance.new("UICorner")
-tabCorner.CornerRadius = UDim.new(0, 6)
-tabCorner.Parent = tabBtn
+local tabs = {}
+local function selectTab(name)
+	for n, t in pairs(tabs) do
+		local on = (n == name)
+		t.page.Visible = on
+		TweenService:Create(t.btn, TweenInfo.new(0.2), {
+			BackgroundColor3 = on and C.PinkDark or C.Card,
+		}):Play()
+		t.stroke.Color = on and C.Pink or C.Stroke
+	end
+end
 
--- Conteneur du contenu principal à droite
-local contentArea = Instance.new("Frame")
-contentArea.Size = UDim2.new(1, -140, 1, -34)
-contentArea.Position = UDim2.new(0, 140, 0, 34)
-contentArea.BackgroundTransparency = 1
-contentArea.Parent = mainFrame
+local function addTab(icon, name)
+	local page = make("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 2,
+		ScrollBarImageColor3 = C.Pink,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Visible = false,
+	}, pages)
+	make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }, page)
+	make("UIPadding", { PaddingRight = UDim.new(0, 6) }, page)
 
--- Message de bienvenue
-local welcomeLabel = Instance.new("TextLabel")
-welcomeLabel.Size = UDim2.new(1, -24, 0, 24)
-welcomeLabel.Position = UDim2.new(0, 12, 0, 12)
-welcomeLabel.BackgroundTransparency = 1
-welcomeLabel.Text = "Bienvenue, " .. player.Name .. " — Tazen hub user"
-welcomeLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
-welcomeLabel.TextSize = 13
-welcomeLabel.Font = Enum.Font.GothamBold
-welcomeLabel.TextXAlignment = Enum.TextXAlignment.Left
-welcomeLabel.Parent = contentArea
+	local btn = make("TextButton", {
+		Size = UDim2.new(0, 38, 0, 38),
+		BackgroundColor3 = C.Card,
+		Text = icon,
+		TextSize = 17,
+		Font = B,
+		TextColor3 = C.White,
+		AutoButtonColor = false,
+		LayoutOrder = #sideBar:GetChildren(),
+	}, sideBar)
+	corner(btn, 9)
+	local st = stroke(btn, C.Stroke, 1)
 
--- Cadre des éléments
-local elementsFrame = Instance.new("ScrollingFrame")
-elementsFrame.Size = UDim2.new(1, -24, 1, -48)
-elementsFrame.Position = UDim2.new(0, 12, 0, 40)
-elementsFrame.BackgroundTransparency = 1
-elementsFrame.CanvasSize = UDim2.new(0, 0, 0, 200)
-elementsFrame.ScrollBarThickness = 3
-elementsFrame.Parent = contentArea
+	tabs[name] = { btn = btn, page = page, stroke = st }
+	btn.MouseButton1Click:Connect(function()
+		selectTab(name)
+	end)
+	return page
+end
 
-local elList = Instance.new("UIListLayout")
-elList.SortOrder = Enum.SortOrder.LayoutOrder
-elList.Padding = UDim.new(0, 8)
-elList.Parent = elementsFrame
+------------------------------------------------------------
+-- COMPOSANTS DE CARTES
+------------------------------------------------------------
+local function card(parent, pos, size, title, sub, cA, cB, rot, asButton)
+	local f = make(asButton and "TextButton" or "Frame", {
+		Position = pos,
+		Size = size,
+		BackgroundColor3 = C.Card,
+		BorderSizePixel = 0,
+	}, parent)
+	if asButton then
+		f.Text = ""
+		f.AutoButtonColor = false
+	end
+	corner(f, 10)
+	stroke(f, C.Stroke, 1)
+	if cA then
+		gradient(f, cA, cB or C.Bg, rot or 45)
+	end
+	label(f, title, 14, B, C.White, UDim2.new(0, 12, 0, 8), UDim2.new(1, -24, 0, 18))
+	local subLbl = label(f, sub, 10, G, Color3.fromRGB(215, 205, 212), UDim2.new(0, 12, 0, 26), UDim2.new(1, -24, 0, 24))
+	subLbl.TextWrapped = true
+	subLbl.TextYAlignment = Enum.TextYAlignment.Top
+	return f, subLbl
+end
+
+local function tileGrid(parent, pos, size, cellH, items)
+	local g = make("Frame", { BackgroundTransparency = 1, Position = pos, Size = size }, parent)
+	make("UIGridLayout", {
+		CellSize = UDim2.new(0.5, -3, 0, cellH),
+		CellPadding = UDim2.new(0, 6, 0, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}, g)
+	local subs = {}
+	for i, it in ipairs(items) do
+		local t = make("TextButton", {
+			BackgroundColor3 = C.Tile,
+			BackgroundTransparency = 0.25,
+			Text = "",
+			AutoButtonColor = false,
+			LayoutOrder = i,
+		}, g)
+		corner(t, 8)
+		label(t, it[1], 11, B, C.White, UDim2.new(0, 8, 0, 6), UDim2.new(1, -12, 0, 14))
+		subs[i] = label(t, it[2], 10, G, C.Gray, UDim2.new(0, 8, 0, 21), UDim2.new(1, -12, 0, 12))
+		if it[3] then
+			t.MouseButton1Click:Connect(it[3])
+		end
+	end
+	return subs
+end
+
+------------------------------------------------------------
+-- PAGE ACCUEIL
+------------------------------------------------------------
+local home = addTab("🏠", "Accueil")
+
+-- Profil
+local profile = make("Frame", {
+	Size = UDim2.new(1, 0, 0, 66),
+	BackgroundColor3 = C.Card,
+	LayoutOrder = 1,
+}, home)
+corner(profile, 10)
+stroke(profile, C.Stroke, 1)
+gradient(profile, Color3.fromRGB(30, 18, 26), C.Card, 0)
+
+local avatarBox = make("Frame", {
+	Size = UDim2.new(0, 50, 0, 50),
+	Position = UDim2.new(0, 8, 0, 8),
+	BackgroundColor3 = C.Tile,
+}, profile)
+corner(avatarBox, 8)
+stroke(avatarBox, C.Pink, 1)
+local avatar = make("ImageLabel", {
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundTransparency = 1,
+}, avatarBox)
+corner(avatar, 8)
+
+task.spawn(function()
+	local ok, img = pcall(function()
+		return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+	end)
+	if ok then
+		avatar.Image = img
+	end
+end)
+
+label(profile, "Bonjour, " .. player.Name, 15, B, C.White, UDim2.new(0, 70, 0, 12), UDim2.new(1, -80, 0, 20))
+label(profile, player.Name .. " - Tazen Hub", 11, G, C.Pink, UDim2.new(0, 70, 0, 34), UDim2.new(1, -80, 0, 16))
+
+-- Grille de cartes
+local row = make("Frame", {
+	Size = UDim2.new(1, 0, 0, 248),
+	BackgroundTransparency = 1,
+	LayoutOrder = 2,
+}, home)
+
+-- Serveur
+local serverCard = card(row, UDim2.new(0, 0, 0, 0), UDim2.new(0.5, -4, 0, 176),
+	"Serveur", "Informations sur la session en cours", C.PinkDeep, C.Bg, 60)
+
+local timeLbl -- défini plus bas
+
+local serverSubs = tileGrid(serverCard, UDim2.new(0, 10, 0, 46), UDim2.new(1, -20, 0, 126), 38, {
+	{ "Joueurs", "..." },
+	{ "Max joueurs", "..." },
+	{ "Latence", "..." },
+	{ "Région", "..." },
+	{ "Dans le serveur", "00:00:00" },
+	{ "Rejoindre", "Appuie pour copier", function()
+		local script = ('game:GetService("TeleportService"):TeleportToPlaceInstance(%d, "%s")'):format(game.PlaceId, game.JobId)
+		local ok = copy(script)
+		timeLbl.Text = ok and "Copié !" or "Copie impossible"
+		task.delay(1.5, function()
+			timeLbl.Text = "Appuie pour copier"
+		end)
+	end },
+})
+timeLbl = serverSubs[6]
+
+-- Discord
+local discordCard, discordSub = card(row, UDim2.new(0, 0, 0, 184), UDim2.new(0.5, -4, 0, 64),
+	"Discord", "Appuie pour rejoindre le serveur Discord", C.Pink, C.PinkDark, 20, true)
+discordCard.MouseButton1Click:Connect(function()
+	local ok = copy(CONFIG.Discord)
+	discordSub.Text = ok and "Lien copié !" or CONFIG.Discord
+	task.delay(2, function()
+		discordSub.Text = "Appuie pour rejoindre le serveur Discord"
+	end)
+end)
+
+-- Executor
+local execName = "Inconnu"
+if identifyexecutor then
+	local ok, n = pcall(identifyexecutor)
+	if ok and n then
+		execName = tostring(n)
+	end
+end
+card(row, UDim2.new(0.5, 4, 0, 0), UDim2.new(0.5, -4, 0, 70),
+	"Executor", execName .. " semble compatible avec ce script.", Color3.fromRGB(190, 55, 110), C.Bg, 30)
+
+-- Amis
+local friendsCard = card(row, UDim2.new(0.5, 4, 0, 78), UDim2.new(0.5, -4, 0, 170),
+	"Amis", "Vois ce que font tes amis", Color3.fromRGB(70, 52, 62), C.Bg, 120)
+
+local friendSubs = tileGrid(friendsCard, UDim2.new(0, 10, 0, 46), UDim2.new(1, -20, 0, 118), 54, {
+	{ "Dans le serveur", "0 ami" },
+	{ "Hors ligne", "..." },
+	{ "En ligne", "..." },
+	{ "Tous", "..." },
+})
+
+------------------------------------------------------------
+-- DONNÉES EN DIRECT
+------------------------------------------------------------
+local joinedAt = os.clock()
+
+local function getPing()
+	local ok, v = pcall(function()
+		return Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+	end)
+	return ok and math.floor(v) or nil
+end
+
+local function fmtTime(s)
+	s = math.floor(s)
+	return string.format("%02d:%02d:%02d", s // 3600, (s % 3600) // 60, s % 60)
+end
+
+local function refreshFriendsInServer()
+	local n = 0
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player then
+			local ok, res = pcall(function()
+				return player:IsFriendsWith(p.UserId)
+			end)
+			if ok and res then
+				n += 1
+			end
+		end
+	end
+	friendSubs[1].Text = n .. (n > 1 and " amis" or " ami")
+end
+
+local totalFriends, onlineFriends = nil, nil
+task.spawn(function()
+	-- Région
+	local ok, region = pcall(function()
+		return LocalizationService:GetCountryRegionForPlayerAsync(player)
+	end)
+	serverSubs[4].Text = ok and tostring(region) or "N/A"
+
+	-- Amis (total)
+	local okF, pagesObj = pcall(function()
+		return Players:GetFriendsAsync(player.UserId)
+	end)
+	if okF then
+		local count = 0
+		while true do
+			for _ in ipairs(pagesObj:GetCurrentPage()) do
+				count += 1
+			end
+			if pagesObj.IsFinished then
+				break
+			end
+			local okN = pcall(function()
+				pagesObj:AdvanceToNextPageAsync()
+			end)
+			if not okN then
+				break
+			end
+		end
+		totalFriends = count
+	end
+
+	-- Amis en ligne
+	local okO, online = pcall(function()
+		return player:GetFriendsOnline()
+	end)
+	if okO and type(online) == "table" then
+		onlineFriends = #online
+	end
+
+	if totalFriends then
+		friendSubs[4].Text = totalFriends .. " amis"
+	else
+		friendSubs[4].Text = "N/A"
+	end
+	if onlineFriends then
+		friendSubs[3].Text = onlineFriends .. " amis"
+		if totalFriends then
+			friendSubs[2].Text = math.max(totalFriends - onlineFriends, 0) .. " amis"
+		end
+	else
+		friendSubs[3].Text = "N/A"
+		friendSubs[2].Text = "N/A"
+	end
+end)
+
+task.spawn(function()
+	while screenGui.Parent do
+		serverSubs[1].Text = #Players:GetPlayers() .. " en jeu"
+		serverSubs[2].Text = Players.MaxPlayers .. " joueurs max"
+		local ping = getPing()
+		serverSubs[3].Text = ping and (ping .. " ms") or "N/A"
+		serverSubs[5].Text = fmtTime(os.clock() - joinedAt)
+		refreshFriendsInServer()
+		task.wait(1)
+	end
+end)
+
+------------------------------------------------------------
+-- PAGE FONCTIONS (tes éléments d'origine)
+------------------------------------------------------------
+local funcs = addTab("⚡", "Fonctions")
+
+label(funcs, "Fonctions", 14, B, C.White, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 1
+
+local function row36(order)
+	local r = make("Frame", {
+		Size = UDim2.new(1, 0, 0, 40),
+		BackgroundColor3 = C.Card,
+		LayoutOrder = order,
+	}, funcs)
+	corner(r, 8)
+	stroke(r, C.Stroke, 1)
+	return r
+end
 
 -- 1. Toggle
-local toggleBox = Instance.new("TextButton")
-toggleBox.Size = UDim2.new(1, 0, 0, 36)
-toggleBox.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
-toggleBox.Text = ""
-toggleBox.Parent = elementsFrame
-
-local tCorner = Instance.new("UICorner")
-tCorner.CornerRadius = UDim.new(0, 6)
-tCorner.Parent = toggleBox
-
-local tText = Instance.new("TextLabel")
-tText.Size = UDim2.new(1, -40, 1, 0)
-tText.Position = UDim2.new(0, 10, 0, 0)
-tText.BackgroundTransparency = 1
-tText.Text = "Activer l'option"
-tText.TextColor3 = Color3.fromRGB(200, 200, 210)
-tText.TextSize = 12
-tText.Font = Enum.Font.Gotham
-tText.TextXAlignment = Enum.TextXAlignment.Left
-tText.Parent = toggleBox
-
-local tInd = Instance.new("Frame")
-tInd.Size = UDim2.new(0, 16, 0, 16)
-tInd.Position = UDim2.new(1, -26, 0.5, -8)
-tInd.BackgroundColor3 = Color3.fromRGB(180, 50, 70)
-tInd.Parent = toggleBox
-
-local indCorner = Instance.new("UICorner")
-indCorner.CornerRadius = UDim.new(1, 0)
-indCorner.Parent = tInd
+local toggleRow = row36(2)
+label(toggleRow, "Activer l'option", 12, G, C.White, UDim2.new(0, 12, 0, 0), UDim2.new(1, -70, 1, 0))
+local switch = make("TextButton", {
+	Size = UDim2.new(0, 38, 0, 20),
+	Position = UDim2.new(1, -50, 0.5, -10),
+	BackgroundColor3 = C.Tile,
+	Text = "",
+	AutoButtonColor = false,
+}, toggleRow)
+corner(switch, 10)
+local switchStroke = stroke(switch, C.Stroke, 1)
+local knob = make("Frame", {
+	Size = UDim2.new(0, 14, 0, 14),
+	Position = UDim2.new(0, 3, 0.5, -7),
+	BackgroundColor3 = C.Gray,
+}, switch)
+corner(knob, 7)
 
 local tState = false
-toggleBox.MouseButton1Click:Connect(function()
+switch.MouseButton1Click:Connect(function()
 	tState = not tState
-	tInd.BackgroundColor3 = tState and Color3.fromRGB(210, 80, 130) or Color3.fromRGB(180, 50, 70)
+	TweenService:Create(knob, TweenInfo.new(0.15), {
+		Position = tState and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7),
+		BackgroundColor3 = tState and C.White or C.Gray,
+	}):Play()
+	TweenService:Create(switch, TweenInfo.new(0.15), {
+		BackgroundColor3 = tState and C.PinkDark or C.Tile,
+	}):Play()
+	switchStroke.Color = tState and C.Pink or C.Stroke
 end)
 
 -- 2. Bouton
-local btn = Instance.new("TextButton")
-btn.Size = UDim2.new(1, 0, 0, 36)
-btn.BackgroundColor3 = Color3.fromRGB(210, 80, 130)
-btn.Text = "Exécuter l'action"
-btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-btn.TextSize = 12
-btn.Font = Enum.Font.GothamBold
-btn.Parent = elementsFrame
-
-local bCorner = Instance.new("UICorner")
-bCorner.CornerRadius = UDim.new(0, 6)
-bCorner.Parent = btn
+local btn = make("TextButton", {
+	Size = UDim2.new(1, 0, 0, 40),
+	BackgroundColor3 = C.PinkDark,
+	Text = "Exécuter l'action",
+	TextColor3 = C.White,
+	TextSize = 12,
+	Font = B,
+	AutoButtonColor = false,
+	LayoutOrder = 3,
+}, funcs)
+corner(btn, 8)
+stroke(btn, C.Pink, 1)
+gradient(btn, C.Pink, C.PinkDark, 0)
 
 -- 3. Zone de texte
-local tbox = Instance.new("TextBox")
-tbox.Size = UDim2.new(1, 0, 0, 36)
-tbox.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
-tbox.PlaceholderText = "Entrer un texte..."
-tbox.Text = ""
-tbox.TextColor3 = Color3.fromRGB(255, 255, 255)
-tbox.PlaceholderColor3 = Color3.fromRGB(120, 120, 130)
-tbox.TextSize = 12
-tbox.Font = Enum.Font.Gotham
-tbox.ClearTextOnFocus = false
-tbox.Parent = elementsFrame
+local tbox = make("TextBox", {
+	Size = UDim2.new(1, 0, 0, 40),
+	BackgroundColor3 = C.Card,
+	PlaceholderText = "Entrer un texte...",
+	Text = "",
+	TextColor3 = C.White,
+	PlaceholderColor3 = Color3.fromRGB(120, 120, 132),
+	TextSize = 12,
+	Font = G,
+	ClearTextOnFocus = false,
+	LayoutOrder = 4,
+}, funcs)
+corner(tbox, 8)
+stroke(tbox, C.Stroke, 1)
+make("UIPadding", { PaddingLeft = UDim.new(0, 12) }, tbox)
+tbox.TextXAlignment = Enum.TextXAlignment.Left
 
-local boxCorner = Instance.new("UICorner")
-boxCorner.CornerRadius = UDim.new(0, 6)
-boxCorner.Parent = tbox
+------------------------------------------------------------
+-- PAGE PARAMÈTRES
+------------------------------------------------------------
+local settings = addTab("⚙️", "Paramètres")
+label(settings, "Paramètres", 14, B, C.White, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 1
+label(settings, "Bientôt disponible...", 12, G, C.Gray, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 2
+
+------------------------------------------------------------
+selectTab("Accueil")
