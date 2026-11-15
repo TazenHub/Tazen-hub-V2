@@ -656,7 +656,8 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
--- FARM TABS : AUTO REBIRTH / FAST FARMING / FAST REBIRTH (no pets, no pass)
+------------------------------------------------------------
+-- FARM TABS : AUTO REBIRTH / FAST FARMING / FAST REBIRTH
 ------------------------------------------------------------
 do
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -664,8 +665,7 @@ do
 
 	-- ===== SETTINGS =====
 	local REP_CAP = 659 -- max reps/s sent (same cap as V1)
-	local TRY_WINDOW = 0.6 -- how long each rebirth attempt lasts (seconds)
-	local MACRO_WORKERS = 2 -- parallel rebirth requests used by Fast Rebirth
+	local REP_PHASE = 2.5 -- seconds of reps before each rebirth attempt in Fast Rebirth (same as V1)
 	local REBIRTH_WORKERS = 3 -- parallel rebirth requests used by Auto Rebirth
 	local MUSCLE_PLACE_ID = 3623096087 -- the farm only works in this game
 	-- ====================
@@ -674,12 +674,109 @@ do
 
 	-- state (each feature has its own id so loops can be stopped independently)
 	local rebirthId, strengthId, macroId = 0, 0, 0
-	local strRate = REP_CAP
-	local macroRate, macroInterval = REP_CAP, 2 -- fixed for Fast Rebirth
 	local rebirthStart, strengthStart, macroStart = nil, nil, nil
-	local rebirthBase, macroBase = 0, 0
-	local strengthTotal, macroTotal, macroTries, rebirthRepTotal = 0, 0, 0, 0
+	local strengthTotal = 0
 	local conns = {}
+
+	--------------------------------------------------------
+	-- V1-STYLE CALCULATORS (Tot / +rate/s / 1m / 1h / 1d / 1w / 1mo)
+	--------------------------------------------------------
+	local FORMAT_UNITS = {
+		{ 1e36, "Ud" }, { 1e33, "Dc" }, { 1e30, "No" }, { 1e27, "Oc" }, { 1e24, "Sp" }, { 1e21, "Sx" },
+		{ 1e18, "Qi" }, { 1e15, "Qa" }, { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "k" },
+	}
+	local function formatNumber(val)
+		if type(val) ~= "number" or val ~= val then
+			return "0"
+		end
+		for _, u in ipairs(FORMAT_UNITS) do
+			if val >= u[1] then
+				return string.format("%.2f%s", val / u[1], u[2])
+			end
+		end
+		return tostring(math.floor(val))
+	end
+
+	local WINDOW = 30
+
+	local function newTracker(window, minEvents)
+		return { gained = 0, history = {}, lastT = nil, events = 0, lastVal = nil, window = window or WINDOW, minEvents = minEvents }
+	end
+
+	local function trackerReset(st)
+		st.gained, st.history, st.lastT, st.events, st.lastVal = 0, {}, nil, 0, nil
+	end
+
+	local function trackerGain(st, n, now)
+		if n <= 0 then
+			return
+		end
+		st.gained += n
+		st.events += 1
+		st.lastT = now
+	end
+
+	-- call this once per second for every active tracker
+	local function trackerRecord(st, now)
+		local h, w = st.history, st.window
+		h[#h + 1] = { t = now, g = st.gained }
+		while #h > 2 and now - h[2].t >= w do
+			table.remove(h, 1)
+		end
+	end
+
+	-- used for trackers fed from a live stat value (e.g. rebirths) instead of counted events
+	local function trackerPollValue(st, now, currentVal)
+		if st.lastVal == nil then
+			st.lastVal = currentVal
+			return
+		end
+		if currentVal > st.lastVal then
+			trackerGain(st, currentVal - st.lastVal, now)
+		end
+		st.lastVal = currentVal
+	end
+
+	local function trackerRate(st, now, startT)
+		if st.minEvents and st.events < st.minEvents then
+			return 0
+		end
+		local elapsed = math.max(1, now - startT)
+		local h = st.history
+		local r = st.gained / elapsed
+		if elapsed > st.window and #h >= 2 then
+			local dt = now - h[1].t
+			if dt >= 5 then
+				r = math.max(0, (st.gained - h[1].g) / dt)
+			end
+		end
+		return r
+	end
+
+	-- "Reps Tot: X (+Y/s) | 1m: .. | 1h: .. | 1d: .. | 1w: .. | 1mo: .."
+	local function trackerText(prefix, st, now, startT)
+		local r = trackerRate(st, now, startT)
+		return string.format("%s Tot: %s (+%s/s) | 1m: %s | 1h: %s | 1d: %s | 1w: %s | 1mo: %s",
+			prefix, formatNumber(st.gained), formatNumber(r),
+			formatNumber(r * 60), formatNumber(r * 3600), formatNumber(r * 86400),
+			formatNumber(r * 604800), formatNumber(r * 2592000))
+	end
+
+	-- "Rebirths Tot: X | 1m: .. | 1h: .. | 1d: .. | 1w: .. | 1mo: .." (no instant rate, like V1)
+	local function trackerRebirthText(prefix, st, now, startT)
+		local r = trackerRate(st, now, startT)
+		local function p(x)
+			return formatNumber(math.floor(x + 0.5))
+		end
+		return string.format("%s Tot: %s | 1m: %s | 1h: %s | 1d: %s | 1w: %s | 1mo: %s",
+			prefix, formatNumber(st.gained), p(r * 60), p(r * 3600), p(r * 86400), p(r * 604800), p(r * 2592000))
+	end
+
+	local rebirthTracker = newTracker(60, 2) -- Auto Rebirth : rebirths gained
+	local rebirthRepTracker = newTracker(30) -- Auto Rebirth : reps sent
+	local strengthTracker = newTracker(30) -- Fast Farming : reps sent
+	local macroRebirthTracker = newTracker(60, 2) -- Fast Rebirth : rebirths gained
+	local macroRepTracker = newTracker(30) -- Fast Rebirth : reps sent
 
 	--------------------------------------------------------
 	-- ICONS (drawn with frames, like the others)
@@ -774,80 +871,11 @@ do
 		return obj
 	end
 
-	local function addSlider(page, order, text, min, max, default, callback)
-		local r = rowFrame(page, order, 54)
-		label(r, text, 12, G, C.White, UDim2.new(0, 12, 0, 6), UDim2.new(1, -100, 0, 18))
-		local val = label(r, tostring(default), 12, B, C.Pink, UDim2.new(1, -82, 0, 6), UDim2.new(0, 70, 0, 18), Enum.TextXAlignment.Right)
-		local track = make("Frame", {
-			Size = UDim2.new(1, -24, 0, 6),
-			Position = UDim2.new(0, 12, 0, 36),
-			BackgroundColor3 = C.Tile,
-			BorderSizePixel = 0,
-		}, r)
-		corner(track, 3)
-		local fill = make("Frame", {
-			Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
-			BackgroundColor3 = C.Pink,
-			BorderSizePixel = 0,
-		}, track)
-		corner(fill, 3)
-		local hit = make("TextButton", {
-			Size = UDim2.new(1, 0, 0, 26),
-			Position = UDim2.new(0, 0, 0, 26),
-			BackgroundTransparency = 1,
-			Text = "",
-		}, r)
-
-		local dragging = false
-		local function setFromX(x)
-			local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-			local v = math.floor(min + rel * (max - min) + 0.5)
-			fill.Size = UDim2.new(rel, 0, 1, 0)
-			val.Text = tostring(v)
-			callback(v)
-		end
-		local function isPointer(input)
-			return input.UserInputType == Enum.UserInputType.MouseButton1
-				or input.UserInputType == Enum.UserInputType.Touch
-		end
-		hit.InputBegan:Connect(function(input)
-			if isPointer(input) then
-				dragging = true
-				page.ScrollingEnabled = false
-				setFromX(input.Position.X)
-			end
-		end)
-		table.insert(conns, UserInputService.InputChanged:Connect(function(input)
-			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-				or input.UserInputType == Enum.UserInputType.Touch) then
-				setFromX(input.Position.X)
-			end
-		end))
-		table.insert(conns, UserInputService.InputEnded:Connect(function(input)
-			if dragging and isPointer(input) then
-				dragging = false
-				page.ScrollingEnabled = true
-			end
-		end))
-		callback(default)
-	end
-
 	--------------------------------------------------------
 	-- GAME HELPERS
 	--------------------------------------------------------
 	local function fmtNum(v)
-		if type(v) ~= "number" or v ~= v then
-			return "0"
-		end
-		local units = {
-			{ 1e18, "Qi" }, { 1e15, "Qa" }, { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "k" },
-		}
-		for _, u in ipairs(units) do
-			if v >= u[1] then
-				return string.format("%.2f%s", v / u[1], u[2])
-			end
-		end
-		return tostring(math.floor(v))
+		return formatNumber(v)
 	end
 
 	local function getRebirthStat()
@@ -875,28 +903,6 @@ do
 			or (rEvents and rEvents:FindFirstChild("muscleEvent"))
 	end
 
-	local function equipToolByName(keyword)
-		pcall(function()
-			local char = player.Character
-			local backpack = player:FindFirstChild("Backpack")
-			if not char or not backpack then
-				return
-			end
-			keyword = keyword:lower()
-			for _, t in ipairs(char:GetChildren()) do
-				if t:IsA("Tool") and t.Name:lower():find(keyword, 1, true) then
-					return -- already equipped
-				end
-			end
-			for _, t in ipairs(backpack:GetChildren()) do
-				if t:IsA("Tool") and t.Name:lower():find(keyword, 1, true) then
-					t.Parent = char
-					return
-				end
-			end
-		end)
-	end
-
 	local function burst(ev, n)
 		for _ = 1, n do
 			ev:FireServer("rep")
@@ -915,90 +921,63 @@ do
 		end
 	end
 
-	--------------------------------------------------------
-	-- TOOL MANAGER (one tool at a time, shared by every tab)
-	--------------------------------------------------------
-	local toolWanted, toolLoopId = nil, 0
-	local toolToggles = {}
+	local function getPetScore(pet)
+		local o = pet:FindFirstChild("RepSpeed") or pet:FindFirstChild("Rep Speed")
+		if o and (o:IsA("NumberValue") or o:IsA("IntValue")) then
+			return o.Value
+		end
+		local attr = pet:GetAttribute("RepSpeed") or pet:GetAttribute("Rep Speed")
+		if attr then
+			return tonumber(attr) or 0
+		end
+		local lvl = pet:FindFirstChild("Level") or pet:FindFirstChild("Lvl")
+		if lvl and lvl.Value then
+			return tonumber(lvl.Value) or 0
+		end
+		return 1
+	end
 
-	local function unequipToolByName(keyword)
-		pcall(function()
-			local char = player.Character
-			local backpack = player:FindFirstChild("Backpack")
-			if not char or not backpack then
-				return
-			end
-			keyword = keyword:lower()
-			for _, t in ipairs(char:GetChildren()) do
-				if t:IsA("Tool") and t.Name:lower():find(keyword, 1, true) then
-					t.Parent = backpack
+	-- sorts pets into: x2-rebirth pets, and the best rep pets (swift samurai + highest score)
+	local function scanPets(petsFolder)
+		local all, tribal, swift, raw = {}, {}, {}, {}
+		for _, folder in ipairs(petsFolder:GetChildren()) do
+			if folder:IsA("Folder") then
+				for _, pet in ipairs(folder:GetChildren()) do
+					all[#all + 1] = pet
+					local name = pet.Name:lower()
+					local pn = pet:FindFirstChild("PetName")
+					if pn then
+						name = name .. " " .. tostring(pn.Value):lower()
+					end
+					if name:find("tribal overlord", 1, true) or name:find("eclipse devourer", 1, true)
+						or name:find("hydra", 1, true) or name:find("titanium", 1, true) then
+						tribal[#tribal + 1] = pet
+					elseif name:find("swift samurai", 1, true) then
+						swift[#swift + 1] = pet
+					elseif name:find("omega", 1, true) or name:find("overlord", 1, true) or name:find("boss", 1, true)
+						or name:find("mythic", 1, true) or name:find("legendary", 1, true) then
+						raw[#raw + 1] = { pet = pet, score = getPetScore(pet) }
+					end
 				end
 			end
+		end
+		table.sort(raw, function(a, b)
+			return a.score > b.score
 		end)
-	end
-
-	-- name = "weight" / "pushup" / nil (nothing). Keeps the tool equipped (even after a respawn).
-	local function setTool(name)
-		local old = toolWanted
-		toolWanted = name
-		toolLoopId += 1
-		if old and old ~= name then
-			unequipToolByName(old)
+		local repPets = {}
+		for _, s in ipairs(swift) do
+			repPets[#repPets + 1] = s
 		end
-		for _, e in ipairs(toolToggles) do
-			e.toggle:Set(e.tool == name, true)
+		for _, e in ipairs(raw) do
+			repPets[#repPets + 1] = e.pet
 		end
-		if name then
-			local myId = toolLoopId
-			task.spawn(function()
-				while farm.alive and toolLoopId == myId do
-					equipToolByName(name)
-					task.wait(1)
-				end
-			end)
-		end
-	end
-
-	local function ensureTool(default)
-		if not toolWanted then
-			setTool(default)
-		end
-	end
-
-	local function addToolToggle(page, order, text, keyword)
-		local t
-		t = addToggle(page, order, text, function(v)
-			setTool(v and keyword or nil)
-		end)
-		table.insert(toolToggles, { toggle = t, tool = keyword })
-		return t
+		return all, tribal, repPets
 	end
 
 	--------------------------------------------------------
 	-- LOOPS (one per feature, completely independent)
 	--------------------------------------------------------
-	-- sends reps at `rate` per second while gate() is true
-	local function repPump(gate, getRate, onSent)
-		local muscle = findMuscleEvent()
-		local carry, lastLook = 0, 0
-		while gate() do
-			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
-			if muscle and muscle.Parent then
-				carry += getRate() * dt
-				local n = math.floor(carry)
-				if n > 0 then
-					carry -= n
-					pcall(burst, muscle, n)
-					onSent(n)
-				end
-			elseif tick() - lastLook > 1 then
-				lastLook = tick()
-				muscle = findMuscleEvent()
-			end
-		end
-	end
-
-	-- AUTO REBIRTH : rebirth requests non-stop + reps (so there is strength to rebirth with)
+	-- AUTO REBIRTH (no pack) : rebirth requests non-stop + reps (so there is strength to rebirth with)
 	local function rebirthLoop(myId)
 		local function running()
 			return farm.alive and rebirthId == myId
@@ -1009,78 +988,140 @@ do
 			return
 		end
 		startWorkers(remote, REBIRTH_WORKERS, running)
-		repPump(running, function()
-			return REP_CAP
-		end, function(n)
-			rebirthRepTotal += n
-		end)
-	end
-
-	-- FAST FARMING : only reps
-	local function strengthLoop(myId)
-		repPump(function()
-			return farm.alive and strengthId == myId
-		end, function()
-			return strRate
-		end, function(n)
-			strengthTotal += n
-		end)
-	end
-
-	-- FAST REBIRTH : reps non-stop + a rebirth attempt every few seconds
-	local function macroLoop(myId)
-		local function running()
-			return farm.alive and macroId == myId
-		end
-		local remote = getRebirthRemote()
-		if not remote then
-			warn("[Tazen Hub] Rebirth remote not found")
-			return
-		end
 
 		local muscle = findMuscleEvent()
-		local rebirthStat = getRebirthStat()
 		local carry, lastLook = 0, 0
-		local trying, tryEnd, nextTry, initial, token = false, 0, 0, 0, 0
-
 		while running() do
 			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
-
-			-- 1) reps never stop
 			if muscle and muscle.Parent then
-				carry += macroRate * dt
+				carry += REP_CAP * dt
 				local n = math.floor(carry)
 				if n > 0 then
 					carry -= n
 					pcall(burst, muscle, n)
-					macroTotal += n
+					trackerGain(rebirthRepTracker, n, tick())
 				end
 			elseif tick() - lastLook > 1 then
 				lastLook = tick()
 				muscle = findMuscleEvent()
 			end
+		end
+	end
 
-			-- 2) every `macroInterval` seconds, try to rebirth for a short window
-			local now = tick()
-			if trying then
-				local ok = rebirthStat and rebirthStat.Value > initial
-				if ok or now >= tryEnd then
-					trying = false
-					nextTry = now + macroInterval
+	-- FAST FARMING : only reps
+	local function strengthLoop(myId)
+		local muscle = findMuscleEvent()
+		local carry, lastLook = 0, 0
+		while farm.alive and strengthId == myId do
+			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
+			if muscle and muscle.Parent then
+				carry += REP_CAP * dt
+				local n = math.floor(carry)
+				if n > 0 then
+					carry -= n
+					pcall(burst, muscle, n)
+					strengthTotal += n
+					trackerGain(strengthTracker, n, tick())
 				end
-			elseif now >= nextTry then
-				trying = true
-				tryEnd = now + TRY_WINDOW
-				initial = rebirthStat and rebirthStat.Value or 0
-				macroTries += 1
-				token += 1
-				local myToken = token
-				startWorkers(remote, MACRO_WORKERS, function()
-					return running() and trying and token == myToken
-				end)
+			elseif tick() - lastLook > 1 then
+				lastLook = tick()
+				muscle = findMuscleEvent()
 			end
 		end
-		trying = false
+	end
+
+	-- FAST REBIRTH (needs the rebirth pack) : ported from V1 - cycles pets between
+	-- reps (Swift Samurai + best rep pets) and rebirth attempts (x2 pets), with auto-lift
+	local function fastRebirthLoop(myId)
+		local function running()
+			return farm.alive and macroId == myId
+		end
+		local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
+		local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
+		local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
+		local autoLiftEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
+		if not (rebirthRemote and equipPetEvent) then
+			warn("[Tazen Hub] Missing remotes for Fast Rebirth (needs the rebirth pack)")
+			return
+		end
+
+		local function petCall(action, pet)
+			pcall(equipPetEvent.FireServer, equipPetEvent, action, pet)
+		end
+		local function toggleAutoLift()
+			if autoLiftEvent then
+				pcall(autoLiftEvent.FireServer, autoLiftEvent, "toggleAutoLift")
+			end
+		end
+
+		toggleAutoLift()
+
+		local petsFolder = player:FindFirstChild("petsFolder")
+		while running() and not petsFolder do
+			task.wait(1)
+			petsFolder = player:FindFirstChild("petsFolder")
+		end
+
+		local muscle = findMuscleEvent()
+		local rebirthsStat = getRebirthStat()
+		local all, tribal, repPets = {}, {}, {}
+		local cycles = 0
+
+		while running() do
+			-- re-scan and re-equip the pets every 15 cycles (same as V1, which did it every cycle;
+			-- we only do it occasionally to cut down on remote calls)
+			if petsFolder and cycles % 15 == 0 then
+				all, tribal, repPets = scanPets(petsFolder)
+				for _, pet in ipairs(all) do
+					petCall("unequipPet", pet)
+				end
+				muscle = (muscle and muscle.Parent) and muscle or findMuscleEvent()
+			end
+			cycles += 1
+
+			-- 1) rep pets on, fast reps for REP_PHASE seconds
+			for _, pet in ipairs(repPets) do
+				petCall("equipPet", pet)
+			end
+			local t0, carry = tick(), 0
+			while running() and tick() - t0 < REP_PHASE do
+				local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
+				if muscle then
+					carry += REP_CAP * dt
+					local n = math.floor(carry)
+					if n > 0 then
+						carry -= n
+						pcall(burst, muscle, n)
+						trackerGain(macroRepTracker, n, tick())
+					end
+				end
+			end
+			for _, pet in ipairs(repPets) do
+				petCall("unequipPet", pet)
+			end
+			if not running() then
+				break
+			end
+
+			-- 2) rebirth (x2) pets on, spam the rebirth request until it goes through
+			for _, pet in ipairs(tribal) do
+				petCall("equipPet", pet)
+			end
+			local initial = rebirthsStat and rebirthsStat.Value or 0
+			local done = false
+			while running() and not done do
+				RunService.Heartbeat:Wait()
+				pcall(rebirthRemote.InvokeServer, rebirthRemote, "rebirthRequest")
+				if rebirthsStat and rebirthsStat.Value > initial then
+					done = true
+				end
+			end
+			for _, pet in ipairs(tribal) do
+				petCall("unequipPet", pet)
+			end
+		end
+
+		toggleAutoLift()
 	end
 
 	--------------------------------------------------------
@@ -1133,10 +1174,10 @@ do
 	local wrong = "Wrong game: Muscle Legends only."
 
 	--------------------------------------------------------
-	-- AUTO REBIRTH TAB
+	-- AUTO REBIRTH TAB (no pack)
 	--------------------------------------------------------
 	addTitle(rebirthPage, "Auto Rebirth")
-	rebirthStatus = addInfo(rebirthPage, 2, isMuscleGame and "Rebirth requests + reps, non-stop. No pets, no pass." or wrong, 30)
+	rebirthStatus = addInfo(rebirthPage, 2, isMuscleGame and "Rebirth requests + reps, non-stop. No pack needed." or wrong, 30)
 
 	rebirthToggle = addToggle(rebirthPage, 3, "Auto Rebirth", function(v)
 		if not allowed(rebirthToggle, rebirthStatus, v) then
@@ -1145,10 +1186,10 @@ do
 		rebirthId += 1
 		if v then
 			stopOthers("rebirth")
-			ensureTool("weight")
 			rebirthStart = os.clock()
-			rebirthBase = getRebirths()
-			rebirthRepTotal = 0
+			trackerReset(rebirthTracker)
+			trackerReset(rebirthRepTracker)
+			rebirthTracker.lastVal = getRebirths()
 			rebirthStatus.Text = "Running..."
 			task.spawn(rebirthLoop, rebirthId)
 		else
@@ -1156,14 +1197,15 @@ do
 			rebirthStatus.Text = "Stopped."
 		end
 	end)
-	addToolToggle(rebirthPage, 4, "Equip Weight", "weight")
-	local rebirthLbl = addInfo(rebirthPage, 5, "Rebirths: -", 50)
+	local rebirthLbl = addInfo(rebirthPage, 4, "Rebirths: -", 34)
+	local rebirthCalcLbl = addInfo(rebirthPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
+	local rebirthRepLbl = addInfo(rebirthPage, 6, "Reps Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
 	--------------------------------------------------------
 	-- FAST FARMING TAB
 	--------------------------------------------------------
 	addTitle(strengthPage, "Fast Farming")
-	strengthStatus = addInfo(strengthPage, 2, isMuscleGame and "Only sends reps. No pets, no pass." or wrong, 30)
+	strengthStatus = addInfo(strengthPage, 2, isMuscleGame and "Only sends reps, as fast as possible." or wrong, 30)
 
 	strengthToggle = addToggle(strengthPage, 3, "Fast Farming", function(v)
 		if not allowed(strengthToggle, strengthStatus, v) then
@@ -1172,9 +1214,9 @@ do
 		strengthId += 1
 		if v then
 			stopOthers("strength")
-			ensureTool("pushup")
 			strengthStart = os.clock()
 			strengthTotal = 0
+			trackerReset(strengthTracker)
 			strengthStatus.Text = "Running..."
 			task.spawn(strengthLoop, strengthId)
 		else
@@ -1182,18 +1224,13 @@ do
 			strengthStatus.Text = "Stopped."
 		end
 	end)
-	addSlider(strengthPage, 4, "Reps per second", 0, REP_CAP, REP_CAP, function(v)
-		strRate = math.min(v, REP_CAP)
-	end)
-	addToolToggle(strengthPage, 5, "Equip Weight", "weight")
-	addToolToggle(strengthPage, 6, "Equip Pushup", "pushup")
-	local strengthLbl = addInfo(strengthPage, 7, "Reps sent: 0 | Avg: 0/s", 34)
+	local strengthCalcLbl = addInfo(strengthPage, 4, "Reps Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
 	--------------------------------------------------------
-	-- FAST REBIRTH TAB
+	-- FAST REBIRTH TAB (needs the pack, uses pets like V1)
 	--------------------------------------------------------
 	addTitle(macroPage, "Fast Rebirth")
-	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Reps non-stop, tries a rebirth every few seconds. No pets, no pass." or wrong, 44)
+	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Needs the rebirth pack. Cycles your pets between reps and rebirths automatically." or wrong, 44)
 
 	macroToggle = addToggle(macroPage, 3, "Fast Rebirth", function(v)
 		if not allowed(macroToggle, macroStatus, v) then
@@ -1202,54 +1239,55 @@ do
 		macroId += 1
 		if v then
 			stopOthers("macro")
-			ensureTool("weight")
 			macroStart = os.clock()
-			macroBase = getRebirths()
-			macroTotal, macroTries = 0, 0
+			trackerReset(macroRebirthTracker)
+			trackerReset(macroRepTracker)
+			macroRebirthTracker.lastVal = getRebirths()
 			macroStatus.Text = "Running..."
-			task.spawn(macroLoop, macroId)
+			task.spawn(fastRebirthLoop, macroId)
 		else
 			macroStart = nil
 			macroStatus.Text = "Stopped."
 		end
 	end)
-
-	addToolToggle(macroPage, 4, "Equip Weight", "weight")
-	local macroLbl = addInfo(macroPage, 5, "Rebirths: - | Reps sent: 0", 50)
+	local macroLbl = addInfo(macroPage, 4, "Rebirths: -", 34)
+	local macroCalcLbl = addInfo(macroPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
+	local macroRepLbl = addInfo(macroPage, 6, "Reps Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
 	--------------------------------------------------------
-	-- LIVE STATS
+	-- LIVE STATS (V1-style calculators, updated every second)
 	--------------------------------------------------------
 	task.spawn(function()
 		while farm.alive do
 			pcall(function()
 				local cur = getRebirths()
+				local now = tick()
 
 				if rebirthStart then
-					local el = math.max(os.clock() - rebirthStart, 1)
-					local gained = math.max(cur - rebirthBase, 0)
-					rebirthLbl.Text = string.format("Rebirths: %s (+%s) | %s/h | %s\nReps sent: %s",
-						fmtNum(cur), fmtNum(gained), fmtNum(gained / el * 3600), fmtTime(el), fmtNum(rebirthRepTotal))
+					trackerPollValue(rebirthTracker, now, cur)
+					trackerRecord(rebirthTracker, now)
+					trackerRecord(rebirthRepTracker, now)
+					rebirthLbl.Text = "Rebirths: " .. fmtNum(cur)
+					rebirthCalcLbl.Text = trackerRebirthText("Rebirths", rebirthTracker, now, rebirthStart)
+					rebirthRepLbl.Text = trackerText("Reps", rebirthRepTracker, now, rebirthStart)
 				else
 					rebirthLbl.Text = "Rebirths: " .. fmtNum(cur)
 				end
 
 				if strengthStart then
-					local el = math.max(os.clock() - strengthStart, 1)
-					strengthLbl.Text = string.format("Reps sent: %s | Avg: %d/s | %s",
-						fmtNum(strengthTotal), math.floor(strengthTotal / el), fmtTime(el))
-				else
-					strengthLbl.Text = "Reps sent: 0 | Avg: 0/s"
+					trackerRecord(strengthTracker, now)
+					strengthCalcLbl.Text = trackerText("Reps", strengthTracker, now, strengthStart)
 				end
 
 				if macroStart then
-					local el = math.max(os.clock() - macroStart, 1)
-					local gained = math.max(cur - macroBase, 0)
-					macroLbl.Text = string.format("Rebirths: %s (+%s) | %s/h\nReps sent: %s | Tries: %d | %s",
-						fmtNum(cur), fmtNum(gained), fmtNum(gained / el * 3600),
-						fmtNum(macroTotal), macroTries, fmtTime(el))
+					trackerPollValue(macroRebirthTracker, now, cur)
+					trackerRecord(macroRebirthTracker, now)
+					trackerRecord(macroRepTracker, now)
+					macroLbl.Text = "Rebirths: " .. fmtNum(cur)
+					macroCalcLbl.Text = trackerRebirthText("Rebirths", macroRebirthTracker, now, macroStart)
+					macroRepLbl.Text = trackerText("Reps", macroRepTracker, now, macroStart)
 				else
-					macroLbl.Text = "Rebirths: " .. fmtNum(cur) .. " | Reps sent: 0"
+					macroLbl.Text = "Rebirths: " .. fmtNum(cur)
 				end
 			end)
 			task.wait(1)
@@ -1262,7 +1300,6 @@ do
 		rebirthId += 1
 		strengthId += 1
 		macroId += 1
-		toolLoopId += 1
 		for _, c in ipairs(conns) do
 			pcall(function()
 				c:Disconnect()
