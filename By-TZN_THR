@@ -656,7 +656,7 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
--- FARM TABS : REBIRTH / STRENGTH / MACRO (no pets, no pass)
+-- FARM TABS : AUTO REBIRTH / FAST FARMING / FAST REBIRTH (no pets, no pass)
 ------------------------------------------------------------
 do
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -665,7 +665,8 @@ do
 	-- ===== SETTINGS =====
 	local REP_CAP = 659 -- max reps/s sent (same cap as V1)
 	local TRY_WINDOW = 0.6 -- how long each rebirth attempt lasts (seconds)
-	local MACRO_WORKERS = 2 -- parallel rebirth requests used by the macro
+	local MACRO_WORKERS = 2 -- parallel rebirth requests used by Fast Rebirth
+	local REBIRTH_WORKERS = 3 -- parallel rebirth requests used by Auto Rebirth
 	local MUSCLE_PLACE_ID = 3623096087 -- the farm only works in this game
 	-- ====================
 
@@ -673,11 +674,10 @@ do
 
 	-- state (each feature has its own id so loops can be stopped independently)
 	local rebirthId, strengthId, macroId = 0, 0, 0
-	local workers = 3
-	local strRate, macroRate, macroInterval = REP_CAP, REP_CAP, 2
+	local macroRate, macroInterval = REP_CAP, 2
 	local rebirthStart, strengthStart, macroStart = nil, nil, nil
 	local rebirthBase, macroBase = 0, 0
-	local strengthTotal, macroTotal, macroTries = 0, 0, 0
+	local strengthTotal, macroTotal, macroTries, rebirthRepTotal = 0, 0, 0, 0
 	local conns = {}
 
 	--------------------------------------------------------
@@ -703,9 +703,9 @@ do
 		rect(icon, 10, 15, 14, 2.5, 0, 1)
 	end
 
-	local rebirthPage = addTab("Rebirth", drawRebirth)
-	local strengthPage = addTab("Strength", drawDumbbell)
-	local macroPage = addTab("Macro", drawMacro)
+	local rebirthPage = addTab("Auto Rebirth", drawRebirth)
+	local strengthPage = addTab("Fast Farming", drawDumbbell)
+	local macroPage = addTab("Fast Rebirth", drawMacro)
 
 	--------------------------------------------------------
 	-- UI BUILDERS (take the page they build into)
@@ -731,24 +731,6 @@ do
 		local l = label(r, text, 11, G, C.Gray, UDim2.new(0, 12, 0, 0), UDim2.new(1, -24, 1, 0))
 		l.TextWrapped = true
 		return l
-	end
-
-	local function addButton(page, order, text, fn)
-		local b = make("TextButton", {
-			Size = UDim2.new(1, 0, 0, 36),
-			BackgroundColor3 = C.PinkDark,
-			Text = text,
-			TextColor3 = C.White,
-			TextSize = 12,
-			Font = B,
-			AutoButtonColor = false,
-			LayoutOrder = order,
-		}, page)
-		corner(b, 8)
-		stroke(b, C.Pink, 1)
-		gradient(b, C.Pink, C.PinkDark, 0)
-		b.MouseButton1Click:Connect(fn)
-		return b
 	end
 
 	local function addToggle(page, order, text, callback)
@@ -933,33 +915,80 @@ do
 	end
 
 	--------------------------------------------------------
-	-- LOOPS (one per feature, completely independent)
+	-- TOOL MANAGER (one tool at a time, shared by every tab)
 	--------------------------------------------------------
-	-- AUTO REBIRTH : only spams rebirth requests
-	local function rebirthLoop(myId)
-		local remote = getRebirthRemote()
-		if not remote then
-			warn("[Tazen Hub] Rebirth remote not found")
-			return
-		end
-		startWorkers(remote, workers, function()
-			return farm.alive and rebirthId == myId
+	local toolWanted, toolLoopId = nil, 0
+	local toolToggles = {}
+
+	local function unequipToolByName(keyword)
+		pcall(function()
+			local char = player.Character
+			local backpack = player:FindFirstChild("Backpack")
+			if not char or not backpack then
+				return
+			end
+			keyword = keyword:lower()
+			for _, t in ipairs(char:GetChildren()) do
+				if t:IsA("Tool") and t.Name:lower():find(keyword, 1, true) then
+					t.Parent = backpack
+				end
+			end
 		end)
 	end
 
-	-- AUTO REP : only sends reps
-	local function strengthLoop(myId)
+	-- name = "weight" / "pushup" / nil (nothing). Keeps the tool equipped (even after a respawn).
+	local function setTool(name)
+		local old = toolWanted
+		toolWanted = name
+		toolLoopId += 1
+		if old and old ~= name then
+			unequipToolByName(old)
+		end
+		for _, e in ipairs(toolToggles) do
+			e.toggle:Set(e.tool == name, true)
+		end
+		if name then
+			local myId = toolLoopId
+			task.spawn(function()
+				while farm.alive and toolLoopId == myId do
+					equipToolByName(name)
+					task.wait(1)
+				end
+			end)
+		end
+	end
+
+	local function ensureTool(default)
+		if not toolWanted then
+			setTool(default)
+		end
+	end
+
+	local function addToolToggle(page, order, text, keyword)
+		local t
+		t = addToggle(page, order, text, function(v)
+			setTool(v and keyword or nil)
+		end)
+		table.insert(toolToggles, { toggle = t, tool = keyword })
+		return t
+	end
+
+	--------------------------------------------------------
+	-- LOOPS (one per feature, completely independent)
+	--------------------------------------------------------
+	-- sends reps at `rate` per second while gate() is true
+	local function repPump(gate, rate, onSent)
 		local muscle = findMuscleEvent()
 		local carry, lastLook = 0, 0
-		while farm.alive and strengthId == myId do
+		while gate() do
 			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
 			if muscle and muscle.Parent then
-				carry += strRate * dt
+				carry += rate * dt
 				local n = math.floor(carry)
 				if n > 0 then
 					carry -= n
 					pcall(burst, muscle, n)
-					strengthTotal += n
+					onSent(n)
 				end
 			elseif tick() - lastLook > 1 then
 				lastLook = tick()
@@ -968,7 +997,32 @@ do
 		end
 	end
 
-	-- MACRO : reps non-stop + a rebirth attempt every few seconds, nothing else
+	-- AUTO REBIRTH : rebirth requests non-stop + reps (so there is strength to rebirth with)
+	local function rebirthLoop(myId)
+		local function running()
+			return farm.alive and rebirthId == myId
+		end
+		local remote = getRebirthRemote()
+		if not remote then
+			warn("[Tazen Hub] Rebirth remote not found")
+			return
+		end
+		startWorkers(remote, REBIRTH_WORKERS, running)
+		repPump(running, REP_CAP, function(n)
+			rebirthRepTotal += n
+		end)
+	end
+
+	-- FAST FARMING : only reps
+	local function strengthLoop(myId)
+		repPump(function()
+			return farm.alive and strengthId == myId
+		end, REP_CAP, function(n)
+			strengthTotal += n
+		end)
+	end
+
+	-- FAST REBIRTH : reps non-stop + a rebirth attempt every few seconds
 	local function macroLoop(myId)
 		local function running()
 			return farm.alive and macroId == myId
@@ -978,7 +1032,6 @@ do
 			warn("[Tazen Hub] Rebirth remote not found")
 			return
 		end
-		equipToolByName("weight")
 
 		local muscle = findMuscleEvent()
 		local rebirthStat = getRebirthStat()
@@ -1026,12 +1079,10 @@ do
 	end
 
 	--------------------------------------------------------
-	-- REBIRTH TAB
+	-- SHARED STOP / GUARD LOGIC
 	--------------------------------------------------------
-	addTitle(rebirthPage, "Auto Rebirth")
-	local rebirthStatus = addInfo(rebirthPage, 2, isMuscleGame and "Only sends rebirth requests. No pets, no pass." or "Wrong game: Muscle Legends only.", 30)
 	local rebirthToggle, strengthToggle, macroToggle
-	local strengthStatus, macroStatus
+	local rebirthStatus, strengthStatus, macroStatus
 
 	local function stopRebirth()
 		rebirthId += 1
@@ -1052,6 +1103,19 @@ do
 		macroStatus.Text = "Stopped."
 	end
 
+	-- the three features all send reps, so only one can run at a time
+	local function stopOthers(except)
+		if except ~= "rebirth" and rebirthToggle.Value then
+			stopRebirth()
+		end
+		if except ~= "strength" and strengthToggle.Value then
+			stopStrength()
+		end
+		if except ~= "macro" and macroToggle.Value then
+			stopMacro()
+		end
+	end
+
 	local function allowed(toggle, status, v)
 		if v and not isMuscleGame then
 			toggle:Set(false, true)
@@ -1061,17 +1125,25 @@ do
 		return true
 	end
 
+	local wrong = "Wrong game: Muscle Legends only."
+
+	--------------------------------------------------------
+	-- AUTO REBIRTH TAB
+	--------------------------------------------------------
+	addTitle(rebirthPage, "Auto Rebirth")
+	rebirthStatus = addInfo(rebirthPage, 2, isMuscleGame and "Rebirth requests + reps, non-stop. No pets, no pass." or wrong, 30)
+
 	rebirthToggle = addToggle(rebirthPage, 3, "Auto Rebirth", function(v)
 		if not allowed(rebirthToggle, rebirthStatus, v) then
 			return
 		end
 		rebirthId += 1
 		if v then
-			if macroToggle.Value then
-				stopMacro()
-			end
+			stopOthers("rebirth")
+			ensureTool("weight")
 			rebirthStart = os.clock()
 			rebirthBase = getRebirths()
+			rebirthRepTotal = 0
 			rebirthStatus.Text = "Running..."
 			task.spawn(rebirthLoop, rebirthId)
 		else
@@ -1079,27 +1151,23 @@ do
 			rebirthStatus.Text = "Stopped."
 		end
 	end)
-
-	addSlider(rebirthPage, 4, "Parallel requests", 1, 5, workers, function(v)
-		workers = v
-	end)
-	local rebirthLbl = addInfo(rebirthPage, 5, "Rebirths: -", 34)
+	addToolToggle(rebirthPage, 4, "Equip Weight", "weight")
+	local rebirthLbl = addInfo(rebirthPage, 5, "Rebirths: -", 50)
 
 	--------------------------------------------------------
-	-- STRENGTH TAB
+	-- FAST FARMING TAB
 	--------------------------------------------------------
-	addTitle(strengthPage, "Auto Rep")
-	strengthStatus = addInfo(strengthPage, 2, isMuscleGame and "Only sends reps. No pets, no pass." or "Wrong game: Muscle Legends only.", 30)
+	addTitle(strengthPage, "Fast Farming")
+	strengthStatus = addInfo(strengthPage, 2, isMuscleGame and "Only sends reps. No pets, no pass." or wrong, 30)
 
-	strengthToggle = addToggle(strengthPage, 3, "Auto Rep", function(v)
+	strengthToggle = addToggle(strengthPage, 3, "Fast Farming", function(v)
 		if not allowed(strengthToggle, strengthStatus, v) then
 			return
 		end
 		strengthId += 1
 		if v then
-			if macroToggle.Value then
-				stopMacro()
-			end
+			stopOthers("strength")
+			ensureTool("pushup")
 			strengthStart = os.clock()
 			strengthTotal = 0
 			strengthStatus.Text = "Running..."
@@ -1109,36 +1177,24 @@ do
 			strengthStatus.Text = "Stopped."
 		end
 	end)
-
-	addSlider(strengthPage, 4, "Reps per second", 0, REP_CAP, REP_CAP, function(v)
-		strRate = math.min(v, REP_CAP)
-	end)
-	addButton(strengthPage, 5, "Equip Weight", function()
-		equipToolByName("weight")
-	end)
-	addButton(strengthPage, 6, "Equip Pushup", function()
-		equipToolByName("pushup")
-	end)
-	local strengthLbl = addInfo(strengthPage, 7, "Reps sent: 0 | Avg: 0/s", 34)
+	addToolToggle(strengthPage, 4, "Equip Weight", "weight")
+	addToolToggle(strengthPage, 5, "Equip Pushup", "pushup")
+	local strengthLbl = addInfo(strengthPage, 6, "Reps sent: 0 | Avg: 0/s", 34)
 
 	--------------------------------------------------------
-	-- MACRO TAB
+	-- FAST REBIRTH TAB
 	--------------------------------------------------------
-	addTitle(macroPage, "Macro")
-	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Reps non-stop, tries a rebirth every few seconds. No pets, no pass." or "Wrong game: Muscle Legends only.", 44)
+	addTitle(macroPage, "Fast Rebirth")
+	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Reps non-stop, tries a rebirth every few seconds. No pets, no pass." or wrong, 44)
 
-	macroToggle = addToggle(macroPage, 3, "Macro (Rep + Rebirth)", function(v)
+	macroToggle = addToggle(macroPage, 3, "Fast Rebirth", function(v)
 		if not allowed(macroToggle, macroStatus, v) then
 			return
 		end
 		macroId += 1
 		if v then
-			if rebirthToggle.Value then
-				stopRebirth()
-			end
-			if strengthToggle.Value then
-				stopStrength()
-			end
+			stopOthers("macro")
+			ensureTool("weight")
 			macroStart = os.clock()
 			macroBase = getRebirths()
 			macroTotal, macroTries = 0, 0
@@ -1156,9 +1212,7 @@ do
 	addSlider(macroPage, 5, "Rebirth try every (s)", 1, 10, macroInterval, function(v)
 		macroInterval = v
 	end)
-	addButton(macroPage, 6, "Equip Weight", function()
-		equipToolByName("weight")
-	end)
+	addToolToggle(macroPage, 6, "Equip Weight", "weight")
 	local macroLbl = addInfo(macroPage, 7, "Rebirths: - | Reps sent: 0", 50)
 
 	--------------------------------------------------------
@@ -1172,8 +1226,8 @@ do
 				if rebirthStart then
 					local el = math.max(os.clock() - rebirthStart, 1)
 					local gained = math.max(cur - rebirthBase, 0)
-					rebirthLbl.Text = string.format("Rebirths: %s (+%s) | %s/h | %s",
-						fmtNum(cur), fmtNum(gained), fmtNum(gained / el * 3600), fmtTime(el))
+					rebirthLbl.Text = string.format("Rebirths: %s (+%s) | %s/h | %s\nReps sent: %s",
+						fmtNum(cur), fmtNum(gained), fmtNum(gained / el * 3600), fmtTime(el), fmtNum(rebirthRepTotal))
 				else
 					rebirthLbl.Text = "Rebirths: " .. fmtNum(cur)
 				end
@@ -1206,6 +1260,7 @@ do
 		rebirthId += 1
 		strengthId += 1
 		macroId += 1
+		toolLoopId += 1
 		for _, c in ipairs(conns) do
 			pcall(function()
 				c:Disconnect()
