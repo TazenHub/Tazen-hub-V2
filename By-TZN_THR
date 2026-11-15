@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════╗
 -- ║   TAZEN HUB V2 - "Hidden" style      ║
--- ║   Colors: black / pink / white             ║
+-- ║   Colors: black / pink / white       ║
 -- ╚══════════════════════════════════════╝
 
 local Players = game:GetService("Players")
@@ -95,7 +95,6 @@ end
 
 local B, G = Enum.Font.GothamBold, Enum.Font.Gotham
 
--- shared state for the farm loops (stopped on close)
 local farm = { alive = true }
 
 ------------------------------------------------------------
@@ -146,7 +145,6 @@ local topBar = make("Frame", {
 	BackgroundTransparency = 1,
 }, mainFrame)
 
--- Logo
 local logoBox = make("Frame", {
 	Size = UDim2.new(0, 30, 0, 30),
 	Position = UDim2.new(0, 14, 0.5, -15),
@@ -204,7 +202,6 @@ make("Frame", {
 	BorderSizePixel = 0,
 }, topBar)
 
--- Drag the window
 local dragging, dragInput, dragStart, startPos
 topBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -272,7 +269,7 @@ local pages = make("Frame", {
 }, body)
 
 ------------------------------------------------------------
--- DRAWN ICONS (built from Frames, no emojis / no uploads)
+-- DRAWN ICONS
 ------------------------------------------------------------
 local function newIcon(btn)
 	local holder = make("Frame", {
@@ -642,7 +639,6 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
-------------------------------------------------------------
 -- FARM TABS : AUTO REBIRTH / FAST FARMING / FAST REBIRTH
 ------------------------------------------------------------
 do
@@ -658,9 +654,9 @@ do
 
 	local rebirthId, strengthId, macroId = 0, 0, 0
 	local rebirthStart, strengthStart, macroStart = nil, nil, nil
-	local strengthTotal = 0
 	local conns = {}
 
+	-- Formateur abrégé (ex: 1.50M)
 	local FORMAT_UNITS = {
 		{ 1e36, "Ud" }, { 1e33, "Dc" }, { 1e30, "No" }, { 1e27, "Oc" }, { 1e24, "Sp" }, { 1e21, "Sx" },
 		{ 1e18, "Qi" }, { 1e15, "Qa" }, { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "k" },
@@ -675,6 +671,27 @@ do
 			end
 		end
 		return tostring(math.floor(val))
+	end
+
+	-- Formateur à l'unité avec séparateurs de milliers (ex: 1,500,000)
+	local function formatExactNumber(val)
+		if type(val) ~= "number" or val ~= val then
+			return "0"
+		end
+		local formatted = tostring(math.floor(val))
+		local k
+		while true do
+			formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+			if k == 0 then
+				break
+			end
+		end
+		return formatted
+	end
+
+	-- Affiche à la fois la valeur à l'unité et la valeur abrégée : ex "1,500,000 (1.50M)"
+	local function formatDual(val)
+		return string.format("%s (%s)", formatExactNumber(val), formatNumber(val))
 	end
 
 	local WINDOW = 30
@@ -731,7 +748,8 @@ do
 		return r
 	end
 
-	local function trackerText(prefix, st, now, startT)
+	-- Projections pour la Force (Strength)
+	local function trackerStrengthText(prefix, st, now, startT)
 		local r = trackerRate(st, now, startT)
 		return string.format("%s Tot: %s (+%s/s) | 1m: %s | 1h: %s | 1d: %s | 1w: %s | 1mo: %s",
 			prefix, formatNumber(st.gained), formatNumber(r),
@@ -739,6 +757,7 @@ do
 			formatNumber(r * 604800), formatNumber(r * 2592000))
 	end
 
+	-- Projections pour les Renaissances (Rebirths)
 	local function trackerRebirthText(prefix, st, now, startT)
 		local r = trackerRate(st, now, startT)
 		local function p(x)
@@ -848,6 +867,19 @@ do
 		local rb = getRebirthStat()
 		if rb and rb:IsA("ValueBase") then
 			return tonumber(rb.Value) or 0
+		end
+		return 0
+	end
+
+	local function getStrengthStat()
+		local ls = player:FindFirstChild("leaderstats")
+		return ls and (ls:FindFirstChild("Strength") or ls:FindFirstChild("Muscle"))
+	end
+
+	local function getStrength()
+		local st = getStrengthStat()
+		if st and st:IsA("ValueBase") then
+			return tonumber(st.Value) or 0
 		end
 		return 0
 	end
@@ -972,8 +1004,6 @@ do
 				if n > 0 then
 					carry -= n
 					pcall(burst, muscle, n)
-					strengthTotal += n
-					trackerGain(strengthTracker, n, tick())
 				end
 			elseif tick() - lastLook > 1 then
 				lastLook = tick()
@@ -1134,7 +1164,7 @@ do
 			rebirthStatus.Text = "Stopped."
 		end
 	end)
-	local rebirthLbl = addInfo(rebirthPage, 4, "Rebirths: 0", 34)
+	local rebirthLbl = addInfo(rebirthPage, 4, "Rebirths: 0 (0)", 34)
 	local rebirthCalcLbl = addInfo(rebirthPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
 	-- FAST FARMING TAB
@@ -1149,8 +1179,8 @@ do
 		if v then
 			stopOthers("strength")
 			strengthStart = os.clock()
-			strengthTotal = 0
 			trackerReset(strengthTracker)
+			strengthTracker.lastVal = getStrength()
 			strengthStatus.Text = "Running..."
 			task.spawn(strengthLoop, strengthId)
 		else
@@ -1158,7 +1188,8 @@ do
 			strengthStatus.Text = "Stopped."
 		end
 	end)
-	local strengthCalcLbl = addInfo(strengthPage, 4, "Force Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
+	local strengthLbl = addInfo(strengthPage, 4, "Strength: 0 (0)", 34)
+	local strengthCalcLbl = addInfo(strengthPage, 5, "Strength Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
 	-- FAST REBIRTH TAB
 	addTitle(macroPage, "Fast Rebirth")
@@ -1181,37 +1212,40 @@ do
 			macroStatus.Text = "Stopped."
 		end
 	end)
-	local macroLbl = addInfo(macroPage, 4, "Rebirths: 0", 34)
+	local macroLbl = addInfo(macroPage, 4, "Rebirths: 0 (0)", 34)
 	local macroCalcLbl = addInfo(macroPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
-	-- LIVE STATS (Abbreviated values with units)
+	-- LIVE STATS (Affiche à la fois l'unité et l'abrégé)
 	task.spawn(function()
 		while farm.alive do
 			pcall(function()
-				local cur = getRebirths()
+				local curRb = getRebirths()
+				local curStr = getStrength()
 				local now = tick()
 
+				local rbDisplay = "Rebirths: " .. formatDual(curRb)
+				local strDisplay = "Strength: " .. formatDual(curStr)
+
+				rebirthLbl.Text = rbDisplay
+				macroLbl.Text = rbDisplay
+				strengthLbl.Text = strDisplay
+
 				if rebirthStart then
-					trackerPollValue(rebirthTracker, now, cur)
+					trackerPollValue(rebirthTracker, now, curRb)
 					trackerRecord(rebirthTracker, now)
-					rebirthLbl.Text = "Rebirths: " .. formatNumber(cur)
 					rebirthCalcLbl.Text = trackerRebirthText("Rebirths", rebirthTracker, now, rebirthStart)
-				else
-					rebirthLbl.Text = "Rebirths: " .. formatNumber(cur)
 				end
 
 				if strengthStart then
+					trackerPollValue(strengthTracker, now, curStr)
 					trackerRecord(strengthTracker, now)
-					strengthCalcLbl.Text = trackerText("Force", strengthTracker, now, strengthStart)
+					strengthCalcLbl.Text = trackerStrengthText("Strength", strengthTracker, now, strengthStart)
 				end
 
 				if macroStart then
-					trackerPollValue(macroRebirthTracker, now, cur)
+					trackerPollValue(macroRebirthTracker, now, curRb)
 					trackerRecord(macroRebirthTracker, now)
-					macroLbl.Text = "Rebirths: " .. formatNumber(cur)
 					macroCalcLbl.Text = trackerRebirthText("Rebirths", macroRebirthTracker, now, macroStart)
-				else
-					macroLbl.Text = "Rebirths: " .. formatNumber(cur)
 				end
 			end)
 			task.wait(1)
@@ -1422,6 +1456,13 @@ do
 				end
 			end
 		end)
+	end
+
+	local function findMuscleEvent()
+		local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+		return player:FindFirstChild("muscleEvent")
+			or (player.Character and player.Character:FindFirstChild("muscleEvent"))
+			or (rEvents and rEvents:FindFirstChild("muscleEvent"))
 	end
 
 	-- KILL TAB
