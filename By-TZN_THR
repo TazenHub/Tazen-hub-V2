@@ -14,8 +14,8 @@ local player = Players.LocalPlayer
 -- CONFIG (à modifier)
 ------------------------------------------------------------
 local CONFIG = {
-	Title = "Tazen Hub",
-	Subtitle = "Fast Rebirth",
+	Title = "Tazen Hub V2",
+	Subtitle = "By TZN_THR",
 	LogoId = "", -- ex : "rbxassetid://123456789" (ton logo uploadé sur Roblox)
 	Discord = "https://discord.gg/ton-lien",
 }
