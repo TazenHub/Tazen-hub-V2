@@ -4,7 +4,7 @@ local player = Players.LocalPlayer
 
 -- ScreenGui principal
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "TazenHubV2"
+screenGui.Name = "Tazen Hub V2"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
