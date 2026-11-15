@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════╗
--- ║   TAZEN HUB V2 ║
--- ║  
+-- ║   TAZEN HUB V2 - "Hidden" style      ║
+-- ║   Colors: black / pink / white             ║
 -- ╚══════════════════════════════════════╝
 
 local Players = game:GetService("Players")
@@ -11,13 +11,13 @@ local LocalizationService = game:GetService("LocalizationService")
 local player = Players.LocalPlayer
 
 ------------------------------------------------------------
--- CONFIG (à modifier)
+-- CONFIG (edit if needed)
 ------------------------------------------------------------
 local CONFIG = {
 	Title = "Tazen Hub V2",
 	Subtitle = "By TZN_THR",
-	LogoId = "", -- ex : "rbxassetid://123456789" (ton logo uploadé sur Roblox)
-	Discord = "https://discord.gg/ton-lien",
+	LogoId = "", -- e.g. "rbxassetid://123456789" (your logo uploaded to Roblox)
+	Discord = "https://discord.gg/UVu7hpe6Tv",
 }
 
 local C = {
@@ -96,7 +96,7 @@ end
 local B, G = Enum.Font.GothamBold, Enum.Font.Gotham
 
 ------------------------------------------------------------
--- SCREENGUI + FENÊTRE
+-- SCREENGUI + WINDOW
 ------------------------------------------------------------
 local guiParent = getGuiParent()
 local old = guiParent:FindFirstChild("TazenHubV3")
@@ -136,7 +136,7 @@ end
 fit()
 
 ------------------------------------------------------------
--- BARRE DU HAUT
+-- TOP BAR
 ------------------------------------------------------------
 local topBar = make("Frame", {
 	Size = UDim2.new(1, 0, 0, TOP_H),
@@ -197,7 +197,7 @@ make("Frame", {
 	BorderSizePixel = 0,
 }, topBar)
 
--- Glisser la fenêtre
+-- Drag the window
 local dragging, dragInput, dragStart, startPos
 topBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -229,7 +229,7 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 ------------------------------------------------------------
--- CORPS : SIDEBAR + PAGES
+-- BODY: SIDEBAR + PAGES
 ------------------------------------------------------------
 local body = make("Frame", {
 	Size = UDim2.new(1, 0, 1, -TOP_H),
@@ -264,6 +264,87 @@ local pages = make("Frame", {
 	BackgroundTransparency = 1,
 }, body)
 
+------------------------------------------------------------
+-- DRAWN ICONS (built from Frames, no emojis / no uploads)
+------------------------------------------------------------
+local function newIcon(btn)
+	local holder = make("Frame", {
+		Size = UDim2.new(0, 20, 0, 20),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		BackgroundTransparency = 1,
+	}, btn)
+	return { holder = holder, fills = {}, strokes = {} }
+end
+
+-- filled rectangle centered on (cx, cy), optional rotation / rounding
+local function rect(icon, cx, cy, w, h, rot, round)
+	local f = make("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0, cx, 0, cy),
+		Size = UDim2.new(0, w, 0, h),
+		Rotation = rot or 0,
+		BackgroundColor3 = C.Gray,
+		BorderSizePixel = 0,
+	}, icon.holder)
+	if round then
+		corner(f, round)
+	end
+	table.insert(icon.fills, f)
+	return f
+end
+
+-- empty circle with a thick outline
+local function ring(icon, cx, cy, d, thick)
+	local f = make("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0, cx, 0, cy),
+		Size = UDim2.new(0, d, 0, d),
+		BackgroundTransparency = 1,
+	}, icon.holder)
+	corner(f, d)
+	table.insert(icon.strokes, stroke(f, C.Gray, thick))
+	return f
+end
+
+local function setIconColor(icon, col)
+	for _, f in ipairs(icon.fills) do
+		f.BackgroundColor3 = col
+	end
+	for _, s in ipairs(icon.strokes) do
+		s.Color = col
+	end
+end
+
+-- HOME: a little house
+local function drawHome(icon)
+	rect(icon, 5.1, 6.2, 12, 3, -35, 1.5) -- roof (left)
+	rect(icon, 14.9, 6.2, 12, 3, 35, 1.5) -- roof (right)
+	rect(icon, 5.5, 14, 2, 8, 0, 1) -- left wall
+	rect(icon, 14.5, 14, 2, 8, 0, 1) -- right wall
+	rect(icon, 10, 18, 11, 2, 0, 1) -- floor
+	rect(icon, 10, 15.2, 3.5, 5.5, 0, 1) -- door
+end
+
+-- FUNCTIONS: a lightning bolt
+local function drawBolt(icon)
+	rect(icon, 9.5, 6, 13.5, 3, 132, 1.5)
+	rect(icon, 9, 10.5, 8, 3, -7, 1.5)
+	rect(icon, 10.5, 14.5, 10.3, 3, 119, 1.5)
+end
+
+-- SETTINGS: a gear
+local function drawGear(icon)
+	ring(icon, 10, 10, 9, 3)
+	for i = 0, 7 do
+		local a = math.rad(i * 45)
+		rect(icon, 10 + math.cos(a) * 7.8, 10 + math.sin(a) * 7.8, 3.6, 3.6, i * 45, 1)
+	end
+end
+
+------------------------------------------------------------
+-- TABS
+------------------------------------------------------------
 local tabs = {}
 local function selectTab(name)
 	for n, t in pairs(tabs) do
@@ -273,10 +354,11 @@ local function selectTab(name)
 			BackgroundColor3 = on and C.PinkDark or C.Card,
 		}):Play()
 		t.stroke.Color = on and C.Pink or C.Stroke
+		setIconColor(t.icon, on and C.White or C.Gray)
 	end
 end
 
-local function addTab(icon, name)
+local function addTab(name, drawIcon)
 	local page = make("ScrollingFrame", {
 		Size = UDim2.new(1, 0, 1, 0),
 		BackgroundTransparency = 1,
@@ -293,17 +375,18 @@ local function addTab(icon, name)
 	local btn = make("TextButton", {
 		Size = UDim2.new(0, 38, 0, 38),
 		BackgroundColor3 = C.Card,
-		Text = icon,
-		TextSize = 17,
-		Font = B,
-		TextColor3 = C.White,
+		Text = "",
 		AutoButtonColor = false,
 		LayoutOrder = #sideBar:GetChildren(),
 	}, sideBar)
 	corner(btn, 9)
 	local st = stroke(btn, C.Stroke, 1)
 
-	tabs[name] = { btn = btn, page = page, stroke = st }
+	local icon = newIcon(btn)
+	drawIcon(icon)
+	setIconColor(icon, C.Gray)
+
+	tabs[name] = { btn = btn, page = page, stroke = st, icon = icon }
 	btn.MouseButton1Click:Connect(function()
 		selectTab(name)
 	end)
@@ -311,7 +394,7 @@ local function addTab(icon, name)
 end
 
 ------------------------------------------------------------
--- COMPOSANTS DE CARTES
+-- CARD COMPONENTS
 ------------------------------------------------------------
 local function card(parent, pos, size, title, sub, cA, cB, rot, asButton)
 	local f = make(asButton and "TextButton" or "Frame", {
@@ -363,11 +446,11 @@ local function tileGrid(parent, pos, size, cellH, items)
 end
 
 ------------------------------------------------------------
--- PAGE ACCUEIL
+-- HOME PAGE
 ------------------------------------------------------------
-local home = addTab("🏠", "Accueil")
+local home = addTab("Home", drawHome)
 
--- Profil
+-- Profile
 local profile = make("Frame", {
 	Size = UDim2.new(1, 0, 0, 66),
 	BackgroundColor3 = C.Card,
@@ -399,52 +482,52 @@ task.spawn(function()
 	end
 end)
 
-label(profile, "Bonjour, " .. player.Name, 15, B, C.White, UDim2.new(0, 70, 0, 12), UDim2.new(1, -80, 0, 20))
+label(profile, "Hello, " .. player.Name, 15, B, C.White, UDim2.new(0, 70, 0, 12), UDim2.new(1, -80, 0, 20))
 label(profile, player.Name .. " - Tazen Hub", 11, G, C.Pink, UDim2.new(0, 70, 0, 34), UDim2.new(1, -80, 0, 16))
 
--- Grille de cartes
+-- Card grid
 local row = make("Frame", {
 	Size = UDim2.new(1, 0, 0, 248),
 	BackgroundTransparency = 1,
 	LayoutOrder = 2,
 }, home)
 
--- Serveur
+-- Server
 local serverCard = card(row, UDim2.new(0, 0, 0, 0), UDim2.new(0.5, -4, 0, 176),
-	"Serveur", "Informations sur la session en cours", C.PinkDeep, C.Bg, 60)
+	"Server", "Information on the session you're currently in", C.PinkDeep, C.Bg, 60)
 
-local timeLbl -- défini plus bas
+local joinLbl -- defined just below
 
 local serverSubs = tileGrid(serverCard, UDim2.new(0, 10, 0, 46), UDim2.new(1, -20, 0, 126), 38, {
-	{ "Joueurs", "..." },
-	{ "Max joueurs", "..." },
-	{ "Latence", "..." },
-	{ "Région", "..." },
-	{ "Dans le serveur", "00:00:00" },
-	{ "Rejoindre", "Appuie pour copier", function()
+	{ "Players", "..." },
+	{ "Maximum Players", "..." },
+	{ "Latency", "..." },
+	{ "Server Region", "..." },
+	{ "In server for", "00:00:00" },
+	{ "Join Script", "Tap to copy join script", function()
 		local script = ('game:GetService("TeleportService"):TeleportToPlaceInstance(%d, "%s")'):format(game.PlaceId, game.JobId)
 		local ok = copy(script)
-		timeLbl.Text = ok and "Copié !" or "Copie impossible"
+		joinLbl.Text = ok and "Copied!" or "Copy failed"
 		task.delay(1.5, function()
-			timeLbl.Text = "Appuie pour copier"
+			joinLbl.Text = "Tap to copy join script"
 		end)
 	end },
 })
-timeLbl = serverSubs[6]
+joinLbl = serverSubs[6]
 
 -- Discord
 local discordCard, discordSub = card(row, UDim2.new(0, 0, 0, 184), UDim2.new(0.5, -4, 0, 64),
-	"Discord", "Appuie pour rejoindre le serveur Discord", C.Pink, C.PinkDark, 20, true)
+	"Discord", "Tap to join the Discord Server", C.Pink, C.PinkDark, 20, true)
 discordCard.MouseButton1Click:Connect(function()
 	local ok = copy(CONFIG.Discord)
-	discordSub.Text = ok and "Lien copié !" or CONFIG.Discord
+	discordSub.Text = ok and "Invite link copied!" or CONFIG.Discord
 	task.delay(2, function()
-		discordSub.Text = "Appuie pour rejoindre le serveur Discord"
+		discordSub.Text = "Tap to join the Discord Server"
 	end)
 end)
 
 -- Executor
-local execName = "Inconnu"
+local execName = "Unknown"
 if identifyexecutor then
 	local ok, n = pcall(identifyexecutor)
 	if ok and n then
@@ -452,21 +535,21 @@ if identifyexecutor then
 	end
 end
 card(row, UDim2.new(0.5, 4, 0, 0), UDim2.new(0.5, -4, 0, 70),
-	"Executor", execName .. " semble compatible avec ce script.", Color3.fromRGB(190, 55, 110), C.Bg, 30)
+	"Executor", "Your executor (" .. execName .. ") seems to support this script.", Color3.fromRGB(190, 55, 110), C.Bg, 30)
 
--- Amis
+-- Friends
 local friendsCard = card(row, UDim2.new(0.5, 4, 0, 78), UDim2.new(0.5, -4, 0, 170),
-	"Amis", "Vois ce que font tes amis", Color3.fromRGB(70, 52, 62), C.Bg, 120)
+	"Friends", "Find out what your friends are currently doing", Color3.fromRGB(70, 52, 62), C.Bg, 120)
 
 local friendSubs = tileGrid(friendsCard, UDim2.new(0, 10, 0, 46), UDim2.new(1, -20, 0, 118), 54, {
-	{ "Dans le serveur", "0 ami" },
-	{ "Hors ligne", "..." },
-	{ "En ligne", "..." },
-	{ "Tous", "..." },
+	{ "In Server", "no friends" },
+	{ "Offline", "..." },
+	{ "Online", "..." },
+	{ "All", "..." },
 })
 
 ------------------------------------------------------------
--- DONNÉES EN DIRECT
+-- LIVE DATA
 ------------------------------------------------------------
 local joinedAt = os.clock()
 
@@ -482,6 +565,13 @@ local function fmtTime(s)
 	return string.format("%02d:%02d:%02d", s // 3600, (s % 3600) // 60, s % 60)
 end
 
+local function plural(n)
+	if n == 0 then
+		return "no friends"
+	end
+	return n .. (n == 1 and " friend" or " friends")
+end
+
 local function refreshFriendsInServer()
 	local n = 0
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -494,18 +584,18 @@ local function refreshFriendsInServer()
 			end
 		end
 	end
-	friendSubs[1].Text = n .. (n > 1 and " amis" or " ami")
+	friendSubs[1].Text = plural(n)
 end
 
-local totalFriends, onlineFriends = nil, nil
 task.spawn(function()
-	-- Région
+	-- Region
 	local ok, region = pcall(function()
 		return LocalizationService:GetCountryRegionForPlayerAsync(player)
 	end)
 	serverSubs[4].Text = ok and tostring(region) or "N/A"
 
-	-- Amis (total)
+	-- Friends (total)
+	local totalFriends, onlineFriends
 	local okF, pagesObj = pcall(function()
 		return Players:GetFriendsAsync(player.UserId)
 	end)
@@ -528,7 +618,7 @@ task.spawn(function()
 		totalFriends = count
 	end
 
-	-- Amis en ligne
+	-- Friends (online)
 	local okO, online = pcall(function()
 		return player:GetFriendsOnline()
 	end)
@@ -536,16 +626,10 @@ task.spawn(function()
 		onlineFriends = #online
 	end
 
-	if totalFriends then
-		friendSubs[4].Text = totalFriends .. " amis"
-	else
-		friendSubs[4].Text = "N/A"
-	end
+	friendSubs[4].Text = totalFriends and (totalFriends .. " Friends") or "N/A"
 	if onlineFriends then
-		friendSubs[3].Text = onlineFriends .. " amis"
-		if totalFriends then
-			friendSubs[2].Text = math.max(totalFriends - onlineFriends, 0) .. " amis"
-		end
+		friendSubs[3].Text = onlineFriends .. " friends"
+		friendSubs[2].Text = totalFriends and (math.max(totalFriends - onlineFriends, 0) .. " friends") or "N/A"
 	else
 		friendSubs[3].Text = "N/A"
 		friendSubs[2].Text = "N/A"
@@ -554,10 +638,10 @@ end)
 
 task.spawn(function()
 	while screenGui.Parent do
-		serverSubs[1].Text = #Players:GetPlayers() .. " en jeu"
-		serverSubs[2].Text = Players.MaxPlayers .. " joueurs max"
+		serverSubs[1].Text = #Players:GetPlayers() .. " playing"
+		serverSubs[2].Text = Players.MaxPlayers .. " players can join"
 		local ping = getPing()
-		serverSubs[3].Text = ping and (ping .. " ms") or "N/A"
+		serverSubs[3].Text = ping and (ping .. "ms") or "N/A"
 		serverSubs[5].Text = fmtTime(os.clock() - joinedAt)
 		refreshFriendsInServer()
 		task.wait(1)
@@ -565,11 +649,11 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
--- PAGE FONCTIONS (tes éléments d'origine)
+-- FUNCTIONS PAGE (your original elements)
 ------------------------------------------------------------
-local funcs = addTab("⚡", "Fonctions")
+local funcs = addTab("Functions", drawBolt)
 
-label(funcs, "Fonctions", 14, B, C.White, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 1
+label(funcs, "Functions", 14, B, C.White, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 1
 
 local function row36(order)
 	local r = make("Frame", {
@@ -584,7 +668,7 @@ end
 
 -- 1. Toggle
 local toggleRow = row36(2)
-label(toggleRow, "Activer l'option", 12, G, C.White, UDim2.new(0, 12, 0, 0), UDim2.new(1, -70, 1, 0))
+label(toggleRow, "Enable option", 12, G, C.White, UDim2.new(0, 12, 0, 0), UDim2.new(1, -70, 1, 0))
 local switch = make("TextButton", {
 	Size = UDim2.new(0, 38, 0, 20),
 	Position = UDim2.new(1, -50, 0.5, -10),
@@ -614,11 +698,11 @@ switch.MouseButton1Click:Connect(function()
 	switchStroke.Color = tState and C.Pink or C.Stroke
 end)
 
--- 2. Bouton
+-- 2. Button
 local btn = make("TextButton", {
 	Size = UDim2.new(1, 0, 0, 40),
 	BackgroundColor3 = C.PinkDark,
-	Text = "Exécuter l'action",
+	Text = "Run action",
 	TextColor3 = C.White,
 	TextSize = 12,
 	Font = B,
@@ -629,11 +713,11 @@ corner(btn, 8)
 stroke(btn, C.Pink, 1)
 gradient(btn, C.Pink, C.PinkDark, 0)
 
--- 3. Zone de texte
+-- 3. Text box
 local tbox = make("TextBox", {
 	Size = UDim2.new(1, 0, 0, 40),
 	BackgroundColor3 = C.Card,
-	PlaceholderText = "Entrer un texte...",
+	PlaceholderText = "Enter text...",
 	Text = "",
 	TextColor3 = C.White,
 	PlaceholderColor3 = Color3.fromRGB(120, 120, 132),
@@ -648,11 +732,11 @@ make("UIPadding", { PaddingLeft = UDim.new(0, 12) }, tbox)
 tbox.TextXAlignment = Enum.TextXAlignment.Left
 
 ------------------------------------------------------------
--- PAGE PARAMÈTRES
+-- SETTINGS PAGE
 ------------------------------------------------------------
-local settings = addTab("⚙️", "Paramètres")
-label(settings, "Paramètres", 14, B, C.White, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 1
-label(settings, "Bientôt disponible...", 12, G, C.Gray, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 2
+local settings = addTab("Settings", drawGear)
+label(settings, "Settings", 14, B, C.White, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 1
+label(settings, "Coming soon...", 12, G, C.Gray, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 20)).LayoutOrder = 2
 
 ------------------------------------------------------------
-selectTab("Accueil")
+selectTab("Home")
