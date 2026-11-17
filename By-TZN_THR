@@ -1,6 +1,6 @@
 -- ╔══════════════════════════════════════╗
 -- ║   TAZEN HUB V2 - "Hidden" style      ║
--- ║   Colors: black / pink / white             ║
+-- ║   Colors: black / pink / white       ║
 -- ╚══════════════════════════════════════╝
 
 local Players = game:GetService("Players")
@@ -95,7 +95,6 @@ end
 
 local B, G = Enum.Font.GothamBold, Enum.Font.Gotham
 
--- shared state for the farm loops (stopped on close)
 local farm = { alive = true }
 
 ------------------------------------------------------------
@@ -146,7 +145,6 @@ local topBar = make("Frame", {
 	BackgroundTransparency = 1,
 }, mainFrame)
 
--- Logo
 local logoBox = make("Frame", {
 	Size = UDim2.new(0, 30, 0, 30),
 	Position = UDim2.new(0, 14, 0.5, -15),
@@ -204,7 +202,6 @@ make("Frame", {
 	BorderSizePixel = 0,
 }, topBar)
 
--- Drag the window
 local dragging, dragInput, dragStart, startPos
 topBar.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -272,7 +269,7 @@ local pages = make("Frame", {
 }, body)
 
 ------------------------------------------------------------
--- DRAWN ICONS (built from Frames, no emojis / no uploads)
+-- DRAWN ICONS
 ------------------------------------------------------------
 local function newIcon(btn)
 	local holder = make("Frame", {
@@ -284,7 +281,6 @@ local function newIcon(btn)
 	return { holder = holder, fills = {}, strokes = {} }
 end
 
--- filled rectangle centered on (cx, cy), optional rotation / rounding
 local function rect(icon, cx, cy, w, h, rot, round)
 	local f = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -301,7 +297,6 @@ local function rect(icon, cx, cy, w, h, rot, round)
 	return f
 end
 
--- empty circle with a thick outline
 local function ring(icon, cx, cy, d, thick)
 	local f = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -323,24 +318,21 @@ local function setIconColor(icon, col)
 	end
 end
 
--- HOME: a little house
 local function drawHome(icon)
-	rect(icon, 5.1, 6.2, 12, 3, -35, 1.5) -- roof (left)
-	rect(icon, 14.9, 6.2, 12, 3, 35, 1.5) -- roof (right)
-	rect(icon, 5.5, 14, 2, 8, 0, 1) -- left wall
-	rect(icon, 14.5, 14, 2, 8, 0, 1) -- right wall
-	rect(icon, 10, 18, 11, 2, 0, 1) -- floor
-	rect(icon, 10, 15.2, 3.5, 5.5, 0, 1) -- door
+	rect(icon, 5.1, 6.2, 12, 3, -35, 1.5)
+	rect(icon, 14.9, 6.2, 12, 3, 35, 1.5)
+	rect(icon, 5.5, 14, 2, 8, 0, 1)
+	rect(icon, 14.5, 14, 2, 8, 0, 1)
+	rect(icon, 10, 18, 11, 2, 0, 1)
+	rect(icon, 10, 15.2, 3.5, 5.5, 0, 1)
 end
 
--- FUNCTIONS: a lightning bolt
 local function drawBolt(icon)
 	rect(icon, 9.5, 6, 13.5, 3, 132, 1.5)
 	rect(icon, 9, 10.5, 8, 3, -7, 1.5)
 	rect(icon, 10.5, 14.5, 10.3, 3, 119, 1.5)
 end
 
--- SETTINGS: a gear
 local function drawGear(icon)
 	ring(icon, 10, 10, 9, 3)
 	for i = 0, 7 do
@@ -457,7 +449,6 @@ end
 ------------------------------------------------------------
 local home = addTab("Home", drawHome)
 
--- Profile
 local profile = make("Frame", {
 	Size = UDim2.new(1, 0, 0, 66),
 	BackgroundColor3 = C.Card,
@@ -492,18 +483,16 @@ end)
 label(profile, "Hello, " .. player.Name, 15, B, C.White, UDim2.new(0, 70, 0, 12), UDim2.new(1, -80, 0, 20))
 label(profile, player.Name .. " - Tazen Hub", 11, G, C.Pink, UDim2.new(0, 70, 0, 34), UDim2.new(1, -80, 0, 16))
 
--- Card grid
 local row = make("Frame", {
 	Size = UDim2.new(1, 0, 0, 248),
 	BackgroundTransparency = 1,
 	LayoutOrder = 2,
 }, home)
 
--- Server
 local serverCard = card(row, UDim2.new(0, 0, 0, 0), UDim2.new(0.5, -4, 0, 176),
 	"Server", "Information on the session you're currently in", C.PinkDeep, C.Bg, 60)
 
-local joinLbl -- defined just below
+local joinLbl
 
 local serverSubs = tileGrid(serverCard, UDim2.new(0, 10, 0, 46), UDim2.new(1, -20, 0, 126), 38, {
 	{ "Players", "..." },
@@ -522,7 +511,6 @@ local serverSubs = tileGrid(serverCard, UDim2.new(0, 10, 0, 46), UDim2.new(1, -2
 })
 joinLbl = serverSubs[6]
 
--- Discord
 local discordCard, discordSub = card(row, UDim2.new(0, 0, 0, 184), UDim2.new(0.5, -4, 0, 64),
 	"Discord", "Tap to join the Discord Server", C.Pink, C.PinkDark, 20, true)
 discordCard.MouseButton1Click:Connect(function()
@@ -533,7 +521,6 @@ discordCard.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Executor
 local execName = "Unknown"
 if identifyexecutor then
 	local ok, n = pcall(identifyexecutor)
@@ -544,7 +531,6 @@ end
 card(row, UDim2.new(0.5, 4, 0, 0), UDim2.new(0.5, -4, 0, 70),
 	"Executor", "Your executor (" .. execName .. ") seems to support this script.", Color3.fromRGB(190, 55, 110), C.Bg, 30)
 
--- Friends
 local friendsCard = card(row, UDim2.new(0.5, 4, 0, 78), UDim2.new(0.5, -4, 0, 170),
 	"Friends", "Find out what your friends are currently doing", Color3.fromRGB(70, 52, 62), C.Bg, 120)
 
@@ -595,13 +581,11 @@ local function refreshFriendsInServer()
 end
 
 task.spawn(function()
-	-- Region
 	local ok, region = pcall(function()
 		return LocalizationService:GetCountryRegionForPlayerAsync(player)
 	end)
 	serverSubs[4].Text = ok and tostring(region) or "N/A"
 
-	-- Friends (total)
 	local totalFriends, onlineFriends
 	local okF, pagesObj = pcall(function()
 		return Players:GetFriendsAsync(player.UserId)
@@ -625,7 +609,6 @@ task.spawn(function()
 		totalFriends = count
 	end
 
-	-- Friends (online)
 	local okO, online = pcall(function()
 		return player:GetFriendsOnline()
 	end)
@@ -656,31 +639,23 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
-------------------------------------------------------------
 -- FARM TABS : AUTO REBIRTH / FAST FARMING / FAST REBIRTH
 ------------------------------------------------------------
 do
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local RunService = game:GetService("RunService")
 
-	-- ===== SETTINGS =====
-	local REP_CAP = 659 -- max reps/s sent (same cap as V1)
-	local REP_PHASE = 2.5 -- seconds of reps before each rebirth attempt in Fast Rebirth (same as V1)
-	local REBIRTH_WORKERS = 3 -- parallel rebirth requests used by Auto Rebirth
-	local MUSCLE_PLACE_ID = 3623096087 -- the farm only works in this game
-	-- ====================
+	local REP_CAP = 659
+	local REP_PHASE = 2.5
+	local REBIRTH_WORKERS = 3
+	local MUSCLE_PLACE_ID = 3623096087
 
 	local isMuscleGame = game.PlaceId == MUSCLE_PLACE_ID
 
-	-- state (each feature has its own id so loops can be stopped independently)
 	local rebirthId, strengthId, macroId = 0, 0, 0
 	local rebirthStart, strengthStart, macroStart = nil, nil, nil
-	local strengthTotal = 0
 	local conns = {}
 
-	--------------------------------------------------------
-	-- V1-STYLE CALCULATORS (Tot / +rate/s / 1m / 1h / 1d / 1w / 1mo)
-	--------------------------------------------------------
 	local FORMAT_UNITS = {
 		{ 1e36, "Ud" }, { 1e33, "Dc" }, { 1e30, "No" }, { 1e27, "Oc" }, { 1e24, "Sp" }, { 1e21, "Sx" },
 		{ 1e18, "Qi" }, { 1e15, "Qa" }, { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "k" },
@@ -695,6 +670,25 @@ do
 			end
 		end
 		return tostring(math.floor(val))
+	end
+
+	local function formatExactNumber(val)
+		if type(val) ~= "number" or val ~= val then
+			return "0"
+		end
+		local formatted = tostring(math.floor(val))
+		local k
+		while true do
+			formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+			if k == 0 then
+				break
+			end
+		end
+		return formatted
+	end
+
+	local function formatDual(val)
+		return string.format("%s (%s)", formatExactNumber(val), formatNumber(val))
 	end
 
 	local WINDOW = 30
@@ -716,7 +710,6 @@ do
 		st.lastT = now
 	end
 
-	-- call this once per second for every active tracker
 	local function trackerRecord(st, now)
 		local h, w = st.history, st.window
 		h[#h + 1] = { t = now, g = st.gained }
@@ -725,7 +718,6 @@ do
 		end
 	end
 
-	-- used for trackers fed from a live stat value (e.g. rebirths) instead of counted events
 	local function trackerPollValue(st, now, currentVal)
 		if st.lastVal == nil then
 			st.lastVal = currentVal
@@ -753,8 +745,7 @@ do
 		return r
 	end
 
-	-- "Reps Tot: X (+Y/s) | 1m: .. | 1h: .. | 1d: .. | 1w: .. | 1mo: .."
-	local function trackerText(prefix, st, now, startT)
+	local function trackerStrengthText(prefix, st, now, startT)
 		local r = trackerRate(st, now, startT)
 		return string.format("%s Tot: %s (+%s/s) | 1m: %s | 1h: %s | 1d: %s | 1w: %s | 1mo: %s",
 			prefix, formatNumber(st.gained), formatNumber(r),
@@ -762,7 +753,6 @@ do
 			formatNumber(r * 604800), formatNumber(r * 2592000))
 	end
 
-	-- "Rebirths Tot: X | 1m: .. | 1h: .. | 1d: .. | 1w: .. | 1mo: .." (no instant rate, like V1)
 	local function trackerRebirthText(prefix, st, now, startT)
 		local r = trackerRate(st, now, startT)
 		local function p(x)
@@ -772,15 +762,10 @@ do
 			prefix, formatNumber(st.gained), p(r * 60), p(r * 3600), p(r * 86400), p(r * 604800), p(r * 2592000))
 	end
 
-	local rebirthTracker = newTracker(60, 2) -- Auto Rebirth : rebirths gained
-	local rebirthRepTracker = newTracker(30) -- Auto Rebirth : reps sent
-	local strengthTracker = newTracker(30) -- Fast Farming : reps sent
-	local macroRebirthTracker = newTracker(60, 2) -- Fast Rebirth : rebirths gained
-	local macroRepTracker = newTracker(30) -- Fast Rebirth : reps sent
+	local rebirthTracker = newTracker(60, 2)
+	local strengthTracker = newTracker(30)
+	local macroRebirthTracker = newTracker(60, 2)
 
-	--------------------------------------------------------
-	-- ICONS (drawn with frames, like the others)
-	--------------------------------------------------------
 	local function drawRebirth(icon)
 		ring(icon, 10, 10, 14, 2.5)
 		rect(icon, 15.5, 3.5, 6, 2.5, -35, 1)
@@ -805,9 +790,6 @@ do
 	local strengthPage = addTab("Fast Farming", drawDumbbell)
 	local macroPage = addTab("Fast Rebirth", drawMacro)
 
-	--------------------------------------------------------
-	-- UI BUILDERS (take the page they build into)
-	--------------------------------------------------------
 	local function rowFrame(page, order, h)
 		local r = make("Frame", {
 			Size = UDim2.new(1, 0, 0, h or 40),
@@ -871,13 +853,6 @@ do
 		return obj
 	end
 
-	--------------------------------------------------------
-	-- GAME HELPERS
-	--------------------------------------------------------
-	local function fmtNum(v)
-		return formatNumber(v)
-	end
-
 	local function getRebirthStat()
 		local ls = player:FindFirstChild("leaderstats")
 		return ls and (ls:FindFirstChild("Rebirths") or ls:FindFirstChild("Rebirth"))
@@ -891,16 +866,28 @@ do
 		return 0
 	end
 
+	local function getStrengthStat()
+		local ls = player:FindFirstChild("leaderstats")
+		return ls and (ls:FindFirstChild("Strength") or ls:FindFirstChild("Muscle"))
+	end
+
+	local function getStrength()
+		local st = getStrengthStat()
+		if st and st:IsA("ValueBase") then
+			return tonumber(st.Value) or 0
+		end
+		return 0
+	end
+
 	local function getRebirthRemote()
 		local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
 		return rEvents and rEvents:WaitForChild("rebirthRemote", 5)
 	end
 
-	local function findMuscleEvent()
-		local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+	local function getMuscleEvent()
 		return player:FindFirstChild("muscleEvent")
 			or (player.Character and player.Character:FindFirstChild("muscleEvent"))
-			or (rEvents and rEvents:FindFirstChild("muscleEvent"))
+			or (ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent"))
 	end
 
 	local function burst(ev, n)
@@ -909,7 +896,25 @@ do
 		end
 	end
 
-	-- Several rebirth requests in flight at once (InvokeServer waits for the server's reply)
+	-- Envoi pur et optimisé des reps (utilisé uniquement sur Auto Rebirth & Fast Farming)
+	local function startRepBurst(runningCheck)
+		task.spawn(function()
+			local carry = 0
+			while runningCheck() do
+				local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
+				carry += REP_CAP * dt
+				local n = math.floor(carry)
+				if n > 0 then
+					carry -= n
+					local muscleEvent = getMuscleEvent()
+					if muscleEvent then
+						pcall(burst, muscleEvent, n)
+					end
+				end
+			end
+		end)
+	end
+
 	local function startWorkers(remote, count, gate)
 		for _ = 1, count do
 			task.spawn(function()
@@ -937,7 +942,6 @@ do
 		return 1
 	end
 
-	-- sorts pets into: x2-rebirth pets, and the best rep pets (swift samurai + highest score)
 	local function scanPets(petsFolder)
 		local all, tribal, swift, raw = {}, {}, {}, {}
 		for _, folder in ipairs(petsFolder:GetChildren()) do
@@ -974,64 +978,28 @@ do
 		return all, tribal, repPets
 	end
 
-	--------------------------------------------------------
-	-- LOOPS (one per feature, completely independent)
-	--------------------------------------------------------
-	-- AUTO REBIRTH (no pack) : rebirth requests non-stop + reps (so there is strength to rebirth with)
+	-- 1. AUTO REBIRTH : reps purs + rebirthRequest (sans pets ni pass auto rep)
 	local function rebirthLoop(myId)
 		local function running()
 			return farm.alive and rebirthId == myId
 		end
 		local remote = getRebirthRemote()
 		if not remote then
-			warn("[Tazen Hub] Rebirth remote not found")
 			return
 		end
 		startWorkers(remote, REBIRTH_WORKERS, running)
-
-		local muscle = findMuscleEvent()
-		local carry, lastLook = 0, 0
-		while running() do
-			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
-			if muscle and muscle.Parent then
-				carry += REP_CAP * dt
-				local n = math.floor(carry)
-				if n > 0 then
-					carry -= n
-					pcall(burst, muscle, n)
-					trackerGain(rebirthRepTracker, n, tick())
-				end
-			elseif tick() - lastLook > 1 then
-				lastLook = tick()
-				muscle = findMuscleEvent()
-			end
-		end
+		startRepBurst(running)
 	end
 
-	-- FAST FARMING : only reps
+	-- 2. FAST FARMING : reps purs uniquement
 	local function strengthLoop(myId)
-		local muscle = findMuscleEvent()
-		local carry, lastLook = 0, 0
-		while farm.alive and strengthId == myId do
-			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
-			if muscle and muscle.Parent then
-				carry += REP_CAP * dt
-				local n = math.floor(carry)
-				if n > 0 then
-					carry -= n
-					pcall(burst, muscle, n)
-					strengthTotal += n
-					trackerGain(strengthTracker, n, tick())
-				end
-			elseif tick() - lastLook > 1 then
-				lastLook = tick()
-				muscle = findMuscleEvent()
-			end
+		local function running()
+			return farm.alive and strengthId == myId
 		end
+		startRepBurst(running)
 	end
 
-	-- FAST REBIRTH (needs the rebirth pack) : ported from V1 - cycles pets between
-	-- reps (Swift Samurai + best rep pets) and rebirth attempts (x2 pets), with auto-lift
+	-- 3. FAST REBIRTH : logique d'origine intacte (avec pets & pass auto lift)
 	local function fastRebirthLoop(myId)
 		local function running()
 			return farm.alive and macroId == myId
@@ -1041,7 +1009,6 @@ do
 		local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
 		local autoLiftEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
 		if not (rebirthRemote and equipPetEvent) then
-			warn("[Tazen Hub] Missing remotes for Fast Rebirth (needs the rebirth pack)")
 			return
 		end
 
@@ -1062,24 +1029,21 @@ do
 			petsFolder = player:FindFirstChild("petsFolder")
 		end
 
-		local muscle = findMuscleEvent()
+		local muscle = getMuscleEvent()
 		local rebirthsStat = getRebirthStat()
 		local all, tribal, repPets = {}, {}, {}
 		local cycles = 0
 
 		while running() do
-			-- re-scan and re-equip the pets every 15 cycles (same as V1, which did it every cycle;
-			-- we only do it occasionally to cut down on remote calls)
 			if petsFolder and cycles % 15 == 0 then
 				all, tribal, repPets = scanPets(petsFolder)
 				for _, pet in ipairs(all) do
 					petCall("unequipPet", pet)
 				end
-				muscle = (muscle and muscle.Parent) and muscle or findMuscleEvent()
+				muscle = (muscle and muscle.Parent) and muscle or getMuscleEvent()
 			end
 			cycles += 1
 
-			-- 1) rep pets on, fast reps for REP_PHASE seconds
 			for _, pet in ipairs(repPets) do
 				petCall("equipPet", pet)
 			end
@@ -1092,7 +1056,6 @@ do
 					if n > 0 then
 						carry -= n
 						pcall(burst, muscle, n)
-						trackerGain(macroRepTracker, n, tick())
 					end
 				end
 			end
@@ -1103,7 +1066,6 @@ do
 				break
 			end
 
-			-- 2) rebirth (x2) pets on, spam the rebirth request until it goes through
 			for _, pet in ipairs(tribal) do
 				petCall("equipPet", pet)
 			end
@@ -1124,9 +1086,6 @@ do
 		toggleAutoLift()
 	end
 
-	--------------------------------------------------------
-	-- SHARED STOP / GUARD LOGIC
-	--------------------------------------------------------
 	local rebirthToggle, strengthToggle, macroToggle
 	local rebirthStatus, strengthStatus, macroStatus
 
@@ -1149,7 +1108,6 @@ do
 		macroStatus.Text = "Stopped."
 	end
 
-	-- the three features all send reps, so only one can run at a time
 	local function stopOthers(except)
 		if except ~= "rebirth" and rebirthToggle.Value then
 			stopRebirth()
@@ -1173,9 +1131,7 @@ do
 
 	local wrong = "Wrong game: Muscle Legends only."
 
-	--------------------------------------------------------
-	-- AUTO REBIRTH TAB (no pack)
-	--------------------------------------------------------
+	-- AUTO REBIRTH TAB
 	addTitle(rebirthPage, "Auto Rebirth")
 	rebirthStatus = addInfo(rebirthPage, 2, isMuscleGame and "Rebirth requests + reps, non-stop. No pack needed." or wrong, 30)
 
@@ -1188,7 +1144,6 @@ do
 			stopOthers("rebirth")
 			rebirthStart = os.clock()
 			trackerReset(rebirthTracker)
-			trackerReset(rebirthRepTracker)
 			rebirthTracker.lastVal = getRebirths()
 			rebirthStatus.Text = "Running..."
 			task.spawn(rebirthLoop, rebirthId)
@@ -1197,13 +1152,10 @@ do
 			rebirthStatus.Text = "Stopped."
 		end
 	end)
-	local rebirthLbl = addInfo(rebirthPage, 4, "Rebirths: -", 34)
+	local rebirthLbl = addInfo(rebirthPage, 4, "Rebirths: 0 (0)", 34)
 	local rebirthCalcLbl = addInfo(rebirthPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
-	local rebirthRepLbl = addInfo(rebirthPage, 6, "Reps Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
-	--------------------------------------------------------
 	-- FAST FARMING TAB
-	--------------------------------------------------------
 	addTitle(strengthPage, "Fast Farming")
 	strengthStatus = addInfo(strengthPage, 2, isMuscleGame and "Only sends reps, as fast as possible." or wrong, 30)
 
@@ -1215,8 +1167,8 @@ do
 		if v then
 			stopOthers("strength")
 			strengthStart = os.clock()
-			strengthTotal = 0
 			trackerReset(strengthTracker)
+			strengthTracker.lastVal = getStrength()
 			strengthStatus.Text = "Running..."
 			task.spawn(strengthLoop, strengthId)
 		else
@@ -1224,11 +1176,10 @@ do
 			strengthStatus.Text = "Stopped."
 		end
 	end)
-	local strengthCalcLbl = addInfo(strengthPage, 4, "Reps Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
+	local strengthLbl = addInfo(strengthPage, 4, "Strength: 0 (0)", 34)
+	local strengthCalcLbl = addInfo(strengthPage, 5, "Strength Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
-	--------------------------------------------------------
-	-- FAST REBIRTH TAB (needs the pack, uses pets like V1)
-	--------------------------------------------------------
+	-- FAST REBIRTH TAB
 	addTitle(macroPage, "Fast Rebirth")
 	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Needs the rebirth pack. Cycles your pets between reps and rebirths automatically." or wrong, 44)
 
@@ -1241,7 +1192,6 @@ do
 			stopOthers("macro")
 			macroStart = os.clock()
 			trackerReset(macroRebirthTracker)
-			trackerReset(macroRepTracker)
 			macroRebirthTracker.lastVal = getRebirths()
 			macroStatus.Text = "Running..."
 			task.spawn(fastRebirthLoop, macroId)
@@ -1250,51 +1200,46 @@ do
 			macroStatus.Text = "Stopped."
 		end
 	end)
-	local macroLbl = addInfo(macroPage, 4, "Rebirths: -", 34)
+	local macroLbl = addInfo(macroPage, 4, "Rebirths: 0 (0)", 34)
 	local macroCalcLbl = addInfo(macroPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
-	local macroRepLbl = addInfo(macroPage, 6, "Reps Tot: 0 (+0/s) | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
-	--------------------------------------------------------
-	-- LIVE STATS (V1-style calculators, updated every second)
-	--------------------------------------------------------
+	-- LIVE STATS
 	task.spawn(function()
 		while farm.alive do
 			pcall(function()
-				local cur = getRebirths()
+				local curRb = getRebirths()
+				local curStr = getStrength()
 				local now = tick()
 
+				local rbDisplay = "Rebirths: " .. formatDual(curRb)
+				local strDisplay = "Strength: " .. formatDual(curStr)
+
+				rebirthLbl.Text = rbDisplay
+				macroLbl.Text = rbDisplay
+				strengthLbl.Text = strDisplay
+
 				if rebirthStart then
-					trackerPollValue(rebirthTracker, now, cur)
+					trackerPollValue(rebirthTracker, now, curRb)
 					trackerRecord(rebirthTracker, now)
-					trackerRecord(rebirthRepTracker, now)
-					rebirthLbl.Text = "Rebirths: " .. fmtNum(cur)
 					rebirthCalcLbl.Text = trackerRebirthText("Rebirths", rebirthTracker, now, rebirthStart)
-					rebirthRepLbl.Text = trackerText("Reps", rebirthRepTracker, now, rebirthStart)
-				else
-					rebirthLbl.Text = "Rebirths: " .. fmtNum(cur)
 				end
 
 				if strengthStart then
+					trackerPollValue(strengthTracker, now, curStr)
 					trackerRecord(strengthTracker, now)
-					strengthCalcLbl.Text = trackerText("Reps", strengthTracker, now, strengthStart)
+					strengthCalcLbl.Text = trackerStrengthText("Strength", strengthTracker, now, strengthStart)
 				end
 
 				if macroStart then
-					trackerPollValue(macroRebirthTracker, now, cur)
+					trackerPollValue(macroRebirthTracker, now, curRb)
 					trackerRecord(macroRebirthTracker, now)
-					trackerRecord(macroRepTracker, now)
-					macroLbl.Text = "Rebirths: " .. fmtNum(cur)
 					macroCalcLbl.Text = trackerRebirthText("Rebirths", macroRebirthTracker, now, macroStart)
-					macroRepLbl.Text = trackerText("Reps", macroRepTracker, now, macroStart)
-				else
-					macroLbl.Text = "Rebirths: " .. fmtNum(cur)
 				end
 			end)
 			task.wait(1)
 		end
 	end)
 
-	-- Stops every loop and disconnects everything when the hub is closed
 	farm.shutdown = function()
 		farm.alive = false
 		rebirthId += 1
@@ -1310,8 +1255,6 @@ end
 
 ------------------------------------------------------------
 -- V1 FEATURES, PORTED INTO THE V2 UI (Kill / Stats / Misc / Info)
--- NOTE: the V1 webhook that silently sent players' IP, city and country to a
--- Discord webhook is NOT included here on purpose - that was a privacy risk.
 ------------------------------------------------------------
 do
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -1331,9 +1274,6 @@ do
 		end
 	end
 
-	--------------------------------------------------------
-	-- CONFIG SAVE / LOAD (so toggles remember their state)
-	--------------------------------------------------------
 	local CONFIG_PREFIX = "TazenHub_Config_"
 
 	local function loadConfig(cat)
@@ -1357,13 +1297,10 @@ do
 		end)
 	end
 
-	--------------------------------------------------------
-	-- ICONS
-	--------------------------------------------------------
 	local function drawSword(icon)
-		rect(icon, 13, 7, 15, 2.4, -45, 1.2) -- blade
-		rect(icon, 7.5, 12.5, 5, 2.6, 45, 1.2) -- guard
-		rect(icon, 5, 15, 2.4, 6.5, -45, 1) -- handle
+		rect(icon, 13, 7, 15, 2.4, -45, 1.2)
+		rect(icon, 7.5, 12.5, 5, 2.6, 45, 1.2)
+		rect(icon, 5, 15, 2.4, 6.5, -45, 1)
 	end
 
 	local function drawChart(icon)
@@ -1388,9 +1325,6 @@ do
 	local miscPage = addTab("Misc", drawToolbox)
 	local infoPage = addTab("Info", drawInfoIcon)
 
-	--------------------------------------------------------
-	-- SHARED UI BUILDERS (same look as the other tabs)
-	--------------------------------------------------------
 	local function rowFrame(page, order, h)
 		local r = make("Frame", {
 			Size = UDim2.new(1, 0, 0, h or 40),
@@ -1432,7 +1366,6 @@ do
 		return b
 	end
 
-	-- a toggle that remembers its state in a config file, under [cat][key]
 	local function addSavedToggle(page, order, text, cat, key, default, callback)
 		local cfg = loadConfig(cat)
 		local initial = default
@@ -1520,9 +1453,7 @@ do
 			or (rEvents and rEvents:FindFirstChild("muscleEvent"))
 	end
 
-	------------------------------------------------------------------
 	-- KILL TAB
-	------------------------------------------------------------------
 	addTitle(killPage, "Killing")
 	addInfo(killPage, 2, "Punches the nearest matching player repeatedly. Can be used to grief others - use at your own risk.", 40)
 
@@ -1536,7 +1467,6 @@ do
 		equipToolByName("punch")
 	end
 
-	-- mode: "all" hits everyone except whitelisted, "target" hits only marked players
 	local function killLoop(myId, mode)
 		while killRunId == myId and farm.alive do
 			pcall(function()
@@ -1752,9 +1682,7 @@ do
 	connect2(Players.PlayerRemoving, removePlayerRow)
 	task.spawn(refreshPlayerListUI)
 
-	------------------------------------------------------------------
 	-- STATS TAB
-	------------------------------------------------------------------
 	addTitle(statsPage, "Server Stats Viewer")
 	addInfo(statsPage, 2, "Tap a player below to see their leaderstats.", 30)
 	local statsDetail = addInfo(statsPage, 3, "Select a player from the list.", 90)
@@ -1837,12 +1765,9 @@ do
 		end
 	end)
 
-	------------------------------------------------------------------
 	-- MISC TAB
-	------------------------------------------------------------------
 	addTitle(miscPage, "Utilities")
 
-	-- Anti AFK
 	local antiAfkConn = nil
 	local function setAntiAfk(state)
 		if antiAfkConn then
@@ -1860,7 +1785,6 @@ do
 	end
 	addSavedToggle(miscPage, 2, "Anti AFK", "MiscTab", "AntiAfk", false, setAntiAfk)
 
-	-- Anti Lag
 	local antiLagConn = nil
 	local antiLagRun = 0
 	local antiLagTouched = setmetatable({}, { __mode = "k" })
@@ -1951,7 +1875,6 @@ do
 		end
 	end)
 
-	-- Hide Pets / Hide Popups
 	addSavedToggle(miscPage, 4, "Hide Pets", "MiscTab", "HidePets", false, function(v)
 		pcall(function()
 			local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
@@ -1972,7 +1895,6 @@ do
 		end)
 	end)
 
-	-- Username Spoofer : replaces your name on labels so it's harder to screen-clip
 	local spooferEnabled = false
 	local spoofedName = "Anonyme"
 	local function sanitizeText(txt)
@@ -2028,7 +1950,6 @@ do
 		end
 	end)
 
-	-- Auto Wheel
 	local wheelRunId = 0
 	local function autoWheelLoop(myId)
 		while wheelRunId == myId and farm.alive do
@@ -2053,7 +1974,6 @@ do
 		end
 	end)
 
-	-- Auto Eat Protein Egg
 	local eggRunId = 0
 	local eggEaten = 0
 	local eggStatus = "--"
@@ -2158,9 +2078,7 @@ do
 		end
 	end)
 
-	------------------------------------------------------------------
 	-- INFO TAB
-	------------------------------------------------------------------
 	addTitle(infoPage, "Credits & Socials")
 	addInfo(infoPage, 2, CONFIG.Title .. " — " .. CONFIG.Subtitle, 30)
 	addButton(infoPage, 3, "Copy Discord Link", function()
@@ -2168,9 +2086,6 @@ do
 		killStatusLbl.Text = ok and "Discord link copied!" or CONFIG.Discord
 	end)
 
-	------------------------------------------------------------------
-	-- APPLY SAVED SETTINGS AT STARTUP
-	------------------------------------------------------------------
 	task.spawn(function()
 		task.wait(1.5)
 		local misc = loadConfig("MiscTab")
@@ -2187,9 +2102,6 @@ do
 		end
 	end)
 
-	------------------------------------------------------------------
-	-- CLEANUP ON CLOSE
-	------------------------------------------------------------------
 	local prevShutdown = farm.shutdown
 	farm.shutdown = function()
 		if prevShutdown then
