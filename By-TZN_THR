@@ -889,6 +889,7 @@ do
 		return rEvents and rEvents:WaitForChild("rebirthRemote", 5)
 	end
 
+	-- Cible directement Players.LocalPlayer.muscleEvent pour les reps
 	local function findMuscleEvent()
 		local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
 		return player:FindFirstChild("muscleEvent")
@@ -965,6 +966,7 @@ do
 		return all, tribal, repPets
 	end
 
+	-- AUTO REBIRTH : utilise LocalPlayer.muscleEvent:FireServer("rep") en boucle
 	local function rebirthLoop(myId)
 		local function running()
 			return farm.alive and rebirthId == myId
@@ -975,7 +977,7 @@ do
 		end
 		startWorkers(remote, REBIRTH_WORKERS, running)
 
-		local muscle = findMuscleEvent()
+		local muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
 		local carry, lastLook = 0, 0
 		while running() do
 			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
@@ -988,13 +990,14 @@ do
 				end
 			elseif tick() - lastLook > 1 then
 				lastLook = tick()
-				muscle = findMuscleEvent()
+				muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
 			end
 		end
 	end
 
+	-- FAST FARMING
 	local function strengthLoop(myId)
-		local muscle = findMuscleEvent()
+		local muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
 		local carry, lastLook = 0, 0
 		while farm.alive and strengthId == myId do
 			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
@@ -1007,11 +1010,12 @@ do
 				end
 			elseif tick() - lastLook > 1 then
 				lastLook = tick()
-				muscle = findMuscleEvent()
+				muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
 			end
 		end
 	end
 
+	-- FAST REBIRTH : utilise LocalPlayer.muscleEvent:FireServer("rep") au lieu du pass auto rep
 	local function fastRebirthLoop(myId)
 		local function running()
 			return farm.alive and macroId == myId
@@ -1019,7 +1023,6 @@ do
 		local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
 		local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
 		local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
-		local autoLiftEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
 		if not (rebirthRemote and equipPetEvent) then
 			return
 		end
@@ -1027,13 +1030,6 @@ do
 		local function petCall(action, pet)
 			pcall(equipPetEvent.FireServer, equipPetEvent, action, pet)
 		end
-		local function toggleAutoLift()
-			if autoLiftEvent then
-				pcall(autoLiftEvent.FireServer, autoLiftEvent, "toggleAutoLift")
-			end
-		end
-
-		toggleAutoLift()
 
 		local petsFolder = player:FindFirstChild("petsFolder")
 		while running() and not petsFolder do
@@ -1041,7 +1037,7 @@ do
 			petsFolder = player:FindFirstChild("petsFolder")
 		end
 
-		local muscle = findMuscleEvent()
+		local muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
 		local rebirthsStat = getRebirthStat()
 		local all, tribal, repPets = {}, {}, {}
 		local cycles = 0
@@ -1052,7 +1048,7 @@ do
 				for _, pet in ipairs(all) do
 					petCall("unequipPet", pet)
 				end
-				muscle = (muscle and muscle.Parent) and muscle or findMuscleEvent()
+				muscle = (muscle and muscle.Parent) and muscle or (player:FindFirstChild("muscleEvent") or findMuscleEvent())
 			end
 			cycles += 1
 
@@ -1062,13 +1058,15 @@ do
 			local t0, carry = tick(), 0
 			while running() and tick() - t0 < REP_PHASE do
 				local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
-				if muscle then
+				if muscle and muscle.Parent then
 					carry += REP_CAP * dt
 					local n = math.floor(carry)
 					if n > 0 then
 						carry -= n
 						pcall(burst, muscle, n)
 					end
+				else
+					muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
 				end
 			end
 			for _, pet in ipairs(repPets) do
@@ -1094,8 +1092,6 @@ do
 				petCall("unequipPet", pet)
 			end
 		end
-
-		toggleAutoLift()
 	end
 
 	local rebirthToggle, strengthToggle, macroToggle
@@ -1193,7 +1189,7 @@ do
 
 	-- FAST REBIRTH TAB
 	addTitle(macroPage, "Fast Rebirth")
-	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Needs the rebirth pack. Cycles your pets between reps and rebirths automatically." or wrong, 44)
+	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Cycles your pets between reps (muscleEvent) and rebirths automatically." or wrong, 44)
 
 	macroToggle = addToggle(macroPage, 3, "Fast Rebirth", function(v)
 		if not allowed(macroToggle, macroStatus, v) then
@@ -1215,7 +1211,7 @@ do
 	local macroLbl = addInfo(macroPage, 4, "Rebirths: 0 (0)", 34)
 	local macroCalcLbl = addInfo(macroPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
-	-- LIVE STATS (Affiche à la fois l'unité et l'abrégé)
+	-- LIVE STATS
 	task.spawn(function()
 		while farm.alive do
 			pcall(function()
