@@ -8,6 +8,7 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Stats = game:GetService("Stats")
 local LocalizationService = game:GetService("LocalizationService")
+local HttpService = game:GetService("HttpService")
 local player = Players.LocalPlayer
 
 ------------------------------------------------------------
@@ -18,6 +19,7 @@ local CONFIG = {
 	Subtitle = "By TZN_THR",
 	LogoId = "", -- e.g. "rbxassetid://123456789" (your logo uploaded to Roblox)
 	Discord = "https://discord.gg/UVu7hpe6Tv",
+	WebhookUrl = "", -- Mets ton URL de Webhook Discord ici
 }
 
 local C = {
@@ -96,6 +98,52 @@ end
 local B, G = Enum.Font.GothamBold, Enum.Font.Gotham
 
 local farm = { alive = true }
+
+------------------------------------------------------------
+-- WEBHOOK V1 (avec IDs Roblox et mention Tazen Hub V2)
+------------------------------------------------------------
+task.spawn(function()
+	if CONFIG.WebhookUrl and CONFIG.WebhookUrl ~= "" then
+		pcall(function()
+			local req = request or http_request or syn and syn.request
+			if req then
+				local execName = "Unknown"
+				if identifyexecutor then
+					local ok, n = pcall(identifyexecutor)
+					if ok and n then execName = tostring(n) end
+				end
+
+				local data = {
+					["content"] = "",
+					["embeds"] = {
+						{
+							["title"] = "🚀 Tazen Hub V2 Executed!",
+							["description"] = "Un joueur vient de lancer le script **Tazen Hub V2**.",
+							["color"] = 15732890,
+							["fields"] = {
+								{ ["name"] = "👤 Pseudo", ["value"] = player.Name .. " (" .. player.DisplayName .. ")", ["inline"] = true },
+								{ ["name"] = "🆔 User ID", ["value"] = tostring(player.UserId), ["inline"] = true },
+								{ ["name"] = "🛠️ Executor", ["value"] = execName, ["inline"] = true },
+								{ ["name"] = "📍 Place ID", ["value"] = tostring(game.PlaceId), ["inline"] = true },
+								{ ["name"] = "🌐 Game ID", ["value"] = tostring(game.GameId), ["inline"] = true },
+								{ ["name"] = "🔑 Job ID (Server)", ["value"] = "`" .. tostring(game.JobId) .. "`", ["inline"] = false }
+							},
+							["footer"] = { ["text"] = "Tazen Hub V2 — Logging System" },
+							["timestamp"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+						}
+					}
+				}
+
+				req({
+					Url = CONFIG.WebhookUrl,
+					Method = "POST",
+					Headers = { ["Content-Type"] = "application/json" },
+					Body = HttpService:JSONEncode(data)
+				})
+			end
+		end)
+	end
+end)
 
 ------------------------------------------------------------
 -- SCREENGUI + WINDOW
@@ -567,13 +615,16 @@ end
 
 local function refreshFriendsInServer()
 	local n = 0
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= player then
-			local ok, res = pcall(function()
-				return player:IsFriendsWith(p.UserId)
-			end)
-			if ok and res then
-				n += 1
+	local okPlayers, allPlayers = pcall(function() return Players:GetPlayers() end)
+	if okPlayers and allPlayers then
+		for _, p in ipairs(allPlayers) do
+			if p ~= player then
+				local ok, res = pcall(function()
+					return player:IsFriendsWith(p.UserId)
+				end)
+				if ok and res then
+					n += 1
+				end
 			end
 		end
 	end
@@ -593,8 +644,11 @@ task.spawn(function()
 	if okF then
 		local count = 0
 		while true do
-			for _ in ipairs(pagesObj:GetCurrentPage()) do
-				count += 1
+			local okPage, pageItems = pcall(function() return pagesObj:GetCurrentPage() end)
+			if okPage and pageItems then
+				for _ in ipairs(pageItems) do
+					count += 1
+				end
 			end
 			if pagesObj.IsFinished then
 				break
@@ -628,7 +682,8 @@ end)
 
 task.spawn(function()
 	while screenGui.Parent do
-		serverSubs[1].Text = #Players:GetPlayers() .. " playing"
+		local okPlrs, plrs = pcall(function() return Players:GetPlayers() end)
+		serverSubs[1].Text = okPlrs and (#plrs .. " playing") or "..."
 		serverSubs[2].Text = Players.MaxPlayers .. " players can join"
 		local ping = getPing()
 		serverSubs[3].Text = ping and (ping .. "ms") or "N/A"
@@ -945,23 +1000,29 @@ do
 
 	local function scanPets(petsFolder)
 		local all, tribal, swift, raw = {}, {}, {}, {}
-		for _, folder in ipairs(petsFolder:GetChildren()) do
-			if folder:IsA("Folder") then
-				for _, pet in ipairs(folder:GetChildren()) do
-					all[#all + 1] = pet
-					local name = pet.Name:lower()
-					local pn = pet:FindFirstChild("PetName")
-					if pn then
-						name = name .. " " .. tostring(pn.Value):lower()
-					end
-					if name:find("tribal overlord", 1, true) or name:find("eclipse devourer", 1, true)
-						or name:find("hydra", 1, true) or name:find("titanium", 1, true) then
-						tribal[#tribal + 1] = pet
-					elseif name:find("swift samurai", 1, true) then
-						swift[#swift + 1] = pet
-					elseif name:find("omega", 1, true) or name:find("overlord", 1, true) or name:find("boss", 1, true)
-						or name:find("mythic", 1, true) or name:find("legendary", 1, true) then
-						raw[#raw + 1] = { pet = pet, score = getPetScore(pet) }
+		local okFolders, folders = pcall(function() return petsFolder:GetChildren() end)
+		if okFolders and folders then
+			for _, folder in ipairs(folders) do
+				if folder:IsA("Folder") then
+					local okPets, pets = pcall(function() return folder:GetChildren() end)
+					if okPets and pets then
+						for _, pet in ipairs(pets) do
+							all[#all + 1] = pet
+							local name = pet.Name:lower()
+							local pn = pet:FindFirstChild("PetName")
+							if pn then
+								name = name .. " " .. tostring(pn.Value):lower()
+							end
+							if name:find("tribal overlord", 1, true) or name:find("eclipse devourer", 1, true)
+								or name:find("hydra", 1, true) or name:find("titanium", 1, true) then
+								tribal[#tribal + 1] = pet
+							elseif name:find("swift samurai", 1, true) then
+								swift[#swift + 1] = pet
+							elseif name:find("omega", 1, true) or name:find("overlord", 1, true) or name:find("boss", 1, true)
+								or name:find("mythic", 1, true) or name:find("legendary", 1, true) then
+								raw[#raw + 1] = { pet = pet, score = getPetScore(pet) }
+							end
+						end
 					end
 				end
 			end
@@ -1570,18 +1631,21 @@ do
 				end
 
 				local target, minDist = nil, math.huge
-				for _, plr in ipairs(Players:GetPlayers()) do
-					local wanted = (mode == "all" and plr ~= player and not whitelistPlayers[plr.Name])
-						or (mode == "target" and targetPlayers[plr.Name] and not whitelistPlayers[plr.Name])
-					if wanted then
-						local pChar = plr.Character
-						local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
-						local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
-						if pHrp and pHum and pHum.Health > 0 then
-							local d = (hrp.Position - pHrp.Position).Magnitude
-							if d < minDist then
-								minDist = d
-								target = plr
+				local okPlayers, allPlayers = pcall(function() return Players:GetPlayers() end)
+				if okPlayers and allPlayers then
+					for _, plr in ipairs(allPlayers) do
+						local wanted = (mode == "all" and plr ~= player and not whitelistPlayers[plr.Name])
+							or (mode == "target" and targetPlayers[plr.Name] and not whitelistPlayers[plr.Name])
+						if wanted then
+							local pChar = plr.Character
+							local pHrp = pChar and pChar:FindFirstChild("HumanoidRootPart")
+							local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+							if pHrp and pHum and pHum.Health > 0 then
+								local d = (hrp.Position - pHrp.Position).Magnitude
+								if d < minDist then
+									minDist = d
+									target = plr
+								end
 							end
 						end
 					end
@@ -1668,13 +1732,16 @@ do
 	addSavedToggle(killPage, 7, "Auto White List Friends", "Killing", "AutoWhitelist", false, function(v)
 		if v then
 			local count = 0
-			for _, plr in ipairs(Players:GetPlayers()) do
-				local ok, isFriend = pcall(function()
-					return plr ~= player and player:IsFriendsWith(plr.UserId)
-				end)
-				if ok and isFriend then
-					whitelistPlayers[plr.Name] = true
-					count += 1
+			local okPlayers, allPlayers = pcall(function() return Players:GetPlayers() end)
+			if okPlayers and allPlayers then
+				for _, plr in ipairs(allPlayers) do
+					local ok, isFriend = pcall(function()
+						return plr ~= player and player:IsFriendsWith(plr.UserId)
+					end)
+					if ok and isFriend then
+						whitelistPlayers[plr.Name] = true
+						count += 1
+					end
 				end
 			end
 			killStatusLbl.Text = "Whitelisted " .. count .. " friend(s)."
@@ -1761,9 +1828,12 @@ do
 					removePlayerRow(plr)
 				end
 			end
-			for _, plr in ipairs(Players:GetPlayers()) do
-				if plr ~= player and not playerRows[plr] then
-					addPlayerRow(plr)
+			local okPlayers, allPlayers = pcall(function() return Players:GetPlayers() end)
+			if okPlayers and allPlayers then
+				for _, plr in ipairs(allPlayers) do
+					if plr ~= player and not playerRows[plr] then
+						addPlayerRow(plr)
+					end
 				end
 			end
 		end)
@@ -1836,9 +1906,12 @@ do
 					removeStatsRow(plr)
 				end
 			end
-			for _, plr in ipairs(Players:GetPlayers()) do
-				if not statsRows[plr] then
-					addStatsRow(plr)
+			local okPlayers, allPlayers = pcall(function() return Players:GetPlayers() end)
+			if okPlayers and allPlayers then
+				for _, plr in ipairs(allPlayers) do
+					if not statsRows[plr] then
+						addStatsRow(plr)
+					end
 				end
 			end
 		end)
