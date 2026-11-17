@@ -639,13 +639,13 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------
--- FARM TABS : AUTO REBIRTH / FAST FARMING / FAST REBIRTH
+-- FARM TABS : AUTO REBIRTH / FAST FARMING / FAST REBIRTH (OPTIMIZED)
 ------------------------------------------------------------
 do
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local RunService = game:GetService("RunService")
 
-	local REP_CAP = 659
+	local REP_CAP = 659 -- Taux max de requêtes par seconde pour éviter le kick
 	local REP_PHASE = 2.5
 	local REBIRTH_WORKERS = 3
 	local MUSCLE_PLACE_ID = 3623096087
@@ -656,7 +656,6 @@ do
 	local rebirthStart, strengthStart, macroStart = nil, nil, nil
 	local conns = {}
 
-	-- Formateur abrégé (ex: 1.50M)
 	local FORMAT_UNITS = {
 		{ 1e36, "Ud" }, { 1e33, "Dc" }, { 1e30, "No" }, { 1e27, "Oc" }, { 1e24, "Sp" }, { 1e21, "Sx" },
 		{ 1e18, "Qi" }, { 1e15, "Qa" }, { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "k" },
@@ -673,7 +672,6 @@ do
 		return tostring(math.floor(val))
 	end
 
-	-- Formateur à l'unité avec séparateurs de milliers (ex: 1,500,000)
 	local function formatExactNumber(val)
 		if type(val) ~= "number" or val ~= val then
 			return "0"
@@ -689,7 +687,6 @@ do
 		return formatted
 	end
 
-	-- Affiche à la fois la valeur à l'unité et la valeur abrégée : ex "1,500,000 (1.50M)"
 	local function formatDual(val)
 		return string.format("%s (%s)", formatExactNumber(val), formatNumber(val))
 	end
@@ -748,7 +745,6 @@ do
 		return r
 	end
 
-	-- Projections pour la Force (Strength)
 	local function trackerStrengthText(prefix, st, now, startT)
 		local r = trackerRate(st, now, startT)
 		return string.format("%s Tot: %s (+%s/s) | 1m: %s | 1h: %s | 1d: %s | 1w: %s | 1mo: %s",
@@ -757,7 +753,6 @@ do
 			formatNumber(r * 604800), formatNumber(r * 2592000))
 	end
 
-	-- Projections pour les Renaissances (Rebirths)
 	local function trackerRebirthText(prefix, st, now, startT)
 		local r = trackerRate(st, now, startT)
 		local function p(x)
@@ -889,18 +884,34 @@ do
 		return rEvents and rEvents:WaitForChild("rebirthRemote", 5)
 	end
 
-	-- Cible directement Players.LocalPlayer.muscleEvent pour les reps
-	local function findMuscleEvent()
-		local rEvents = ReplicatedStorage:FindFirstChild("rEvents")
+	-- Récupération optimisée et sécurisée de l'event muscleEvent[cite: 9]
+	local function getMuscleEvent()
 		return player:FindFirstChild("muscleEvent")
 			or (player.Character and player.Character:FindFirstChild("muscleEvent"))
-			or (rEvents and rEvents:FindFirstChild("muscleEvent"))
+			or (ReplicatedStorage:FindFirstChild("rEvents") and ReplicatedStorage.rEvents:FindFirstChild("muscleEvent"))
 	end
 
-	local function burst(ev, n)
-		for _ = 1, n do
-			ev:FireServer("rep")
-		end
+	-- SYSTÈME DE RECOMMANDATION / ENVOI OPTIMISÉ DES REPS
+	local function startRepBurst(runningCheck)
+		task.spawn(function()
+			local carry = 0
+			while runningCheck() do
+				local dt = RunService.Heartbeat:Wait()
+				dt = math.min(dt, 0.1) -- Évite les sauts en cas de micro-freeze
+				
+				carry += REP_CAP * dt
+				local n = math.floor(carry)
+				if n > 0 then
+					carry -= n
+					local muscleEvent = getMuscleEvent()
+					if muscleEvent then
+						for _ = 1, n do
+							muscleEvent:FireServer("rep")[cite: 9]
+						end
+					end
+				end
+			end
+		end)
 	end
 
 	local function startWorkers(remote, count, gate)
@@ -966,7 +977,7 @@ do
 		return all, tribal, repPets
 	end
 
-	-- AUTO REBIRTH : utilise LocalPlayer.muscleEvent:FireServer("rep") en boucle
+	-- AUTO REBIRTH LOOP (Optimized)
 	local function rebirthLoop(myId)
 		local function running()
 			return farm.alive and rebirthId == myId
@@ -976,46 +987,18 @@ do
 			return
 		end
 		startWorkers(remote, REBIRTH_WORKERS, running)
-
-		local muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
-		local carry, lastLook = 0, 0
-		while running() do
-			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
-			if muscle and muscle.Parent then
-				carry += REP_CAP * dt
-				local n = math.floor(carry)
-				if n > 0 then
-					carry -= n
-					pcall(burst, muscle, n)
-				end
-			elseif tick() - lastLook > 1 then
-				lastLook = tick()
-				muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
-			end
-		end
+		startRepBurst(running)
 	end
 
-	-- FAST FARMING
+	-- FAST FARMING LOOP (Optimized)
 	local function strengthLoop(myId)
-		local muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
-		local carry, lastLook = 0, 0
-		while farm.alive and strengthId == myId do
-			local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
-			if muscle and muscle.Parent then
-				carry += REP_CAP * dt
-				local n = math.floor(carry)
-				if n > 0 then
-					carry -= n
-					pcall(burst, muscle, n)
-				end
-			elseif tick() - lastLook > 1 then
-				lastLook = tick()
-				muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
-			end
+		local function running()
+			return farm.alive and strengthId == myId
 		end
+		startRepBurst(running)
 	end
 
-	-- FAST REBIRTH : utilise LocalPlayer.muscleEvent:FireServer("rep") au lieu du pass auto rep
+	-- FAST REBIRTH LOOP (Optimized)
 	local function fastRebirthLoop(myId)
 		local function running()
 			return farm.alive and macroId == myId
@@ -1037,7 +1020,6 @@ do
 			petsFolder = player:FindFirstChild("petsFolder")
 		end
 
-		local muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
 		local rebirthsStat = getRebirthStat()
 		local all, tribal, repPets = {}, {}, {}
 		local cycles = 0
@@ -1048,27 +1030,31 @@ do
 				for _, pet in ipairs(all) do
 					petCall("unequipPet", pet)
 				end
-				muscle = (muscle and muscle.Parent) and muscle or (player:FindFirstChild("muscleEvent") or findMuscleEvent())
 			end
 			cycles += 1
 
 			for _, pet in ipairs(repPets) do
 				petCall("equipPet", pet)
 			end
-			local t0, carry = tick(), 0
+			
+			-- Phase de farm de reps optimisée
+			local t0 = tick()
+			local carry = 0
 			while running() and tick() - t0 < REP_PHASE do
-				local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
-				if muscle and muscle.Parent then
-					carry += REP_CAP * dt
-					local n = math.floor(carry)
-					if n > 0 then
-						carry -= n
-						pcall(burst, muscle, n)
+				local dt = RunService.Heartbeat:Wait()
+				carry += REP_CAP * dt
+				local n = math.floor(carry)
+				if n > 0 then
+					carry -= n
+					local muscleEvent = getMuscleEvent()
+					if muscleEvent then
+						for _ = 1, n do
+							muscleEvent:FireServer("rep")[cite: 9]
+						end
 					end
-				else
-					muscle = player:FindFirstChild("muscleEvent") or findMuscleEvent()
 				end
 			end
+			
 			for _, pet in ipairs(repPets) do
 				petCall("unequipPet", pet)
 			end
@@ -2077,7 +2063,7 @@ do
 			pcall(function()
 				fpsLbl.Text = "FPS: " .. tostring(fpsFrames)
 				fpsFrames = 0
-				local left = eggNextAt - tick()
+				left = eggNextAt - tick()
 				eggLbl.Text = string.format("Egg: eaten %d | boost: %s | last: %s",
 					eggEaten, (left > 0) and (math.floor(left) .. "s") or "inactive", eggStatus)
 				killStatusLbl.Text = "Status: " .. killStatus
