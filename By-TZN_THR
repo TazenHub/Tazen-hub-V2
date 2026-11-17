@@ -646,7 +646,6 @@ do
 	local RunService = game:GetService("RunService")
 
 	local REP_CAP = 659
-	local REP_PHASE = 2.5
 	local REBIRTH_WORKERS = 3
 	local MUSCLE_PLACE_ID = 3623096087
 
@@ -971,13 +970,17 @@ do
 			return a.score > b.score
 		end)
 		local repPets = {}
+		local tribalPets = {}
 		for _, s in ipairs(swift) do
 			repPets[#repPets + 1] = s
 		end
 		for _, e in ipairs(raw) do
 			repPets[#repPets + 1] = e.pet
 		end
-		return all, tribal, repPets
+		for _, t in ipairs(tribal) do
+			tribalPets[#tribalPets + 1] = t
+		end
+		return all, tribalPets, repPets
 	end
 
 	-- 1. AUTO REBIRTH : reps purs + rebirthRequest (sans pets ni pass auto rep)
@@ -1001,7 +1004,7 @@ do
 		startRepBurst(running)
 	end
 
-	-- 3. FAST REBIRTH : logique d'origine intacte (avec pets & pass auto lift)
+	-- 3. FAST REBIRTH : Détection de force requise, farm avec rep pets, puis bascule sur les pets x2 rep/rebirth (tribal) et rebirth
 	local function fastRebirthLoop(myId)
 		local function running()
 			return farm.alive and macroId == myId
@@ -1009,7 +1012,6 @@ do
 		local rEvents = ReplicatedStorage:WaitForChild("rEvents", 5)
 		local rebirthRemote = rEvents and rEvents:WaitForChild("rebirthRemote", 5)
 		local equipPetEvent = rEvents and rEvents:WaitForChild("equipPetEvent", 5)
-		local autoLiftEvent = rEvents and rEvents:WaitForChild("savePlayerSizeEvent", 5)
 		if not (rebirthRemote and equipPetEvent) then
 			return
 		end
@@ -1017,13 +1019,6 @@ do
 		local function petCall(action, pet)
 			pcall(equipPetEvent.FireServer, equipPetEvent, action, pet)
 		end
-		local function toggleAutoLift()
-			if autoLiftEvent then
-				pcall(autoLiftEvent.FireServer, autoLiftEvent, "toggleAutoLift")
-			end
-		end
-
-		toggleAutoLift()
 
 		local petsFolder = player:FindFirstChild("petsFolder")
 		while running() and not petsFolder do
@@ -1033,8 +1028,42 @@ do
 
 		local muscle = getMuscleEvent()
 		local rebirthsStat = getRebirthStat()
+		local strengthStat = getStrengthStat()
 		local all, tribal, repPets = {}, {}, {}
 		local cycles = 0
+
+		-- Fonction pour détecter la force requise pour la renaissance dans l'interface ou par estimation
+		local function getRequiredStrength()
+			local ok, req = pcall(function()
+				local playerGui = player:FindFirstChild("PlayerGui")
+				if playerGui then
+					local mainGui = playerGui:FindFirstChild("MainGui") or playerGui:FindFirstChild("ScreenGui")
+					if mainGui then
+						for _, desc in ipairs(mainGui:GetDescendants()) do
+							if desc:IsA("TextLabel") and (desc.Name:lower():find("req") or desc.Name:lower():find("strength") or desc.Text:lower():find("/")) then
+								local txt = desc.Text
+								local numStr = txt:match("/%s*([%d,%.]+[kKmMbBtTqQ]?)") or txt:match("([%d,%.]+[kKmMbBtTqQ]?)%s*req")
+								if numStr then
+									numStr = numStr:gsub(",", "")
+									local mult = 1
+									if numStr:lower():find("k") then mult = 1e3
+									elseif numStr:lower():find("m") then mult = 1e6
+									elseif numStr:lower():find("b") then mult = 1e9
+									elseif numStr:lower():find("t") then mult = 1e12
+									elseif numStr:lower():find("q") then mult = 1e15 end
+									local cleanNum = tonumber(numStr:match("[%d%.]+"))
+									if cleanNum then return cleanNum * mult end
+								end
+							end
+						end
+					end
+				end
+				return nil
+			end)
+			if ok and req then return req end
+			local currentRb = getRebirths()
+			return 10000 + (currentRb * 5000)
+		end
 
 		while running() do
 			if petsFolder and cycles % 15 == 0 then
@@ -1046,11 +1075,20 @@ do
 			end
 			cycles += 1
 
+			-- Étape A : Équiper les pets de rep et envoyer les reps jusqu'à atteindre la force requise
 			for _, pet in ipairs(repPets) do
 				petCall("equipPet", pet)
 			end
-			local t0, carry = tick(), 0
-			while running() and tick() - t0 < REP_PHASE do
+
+			local carry = 0
+			local targetStrength = getRequiredStrength()
+
+			while running() do
+				local currentStrength = strengthStat and tonumber(strengthStat.Value) or 0
+				if currentStrength >= targetStrength then
+					break
+				end
+
 				local dt = math.min(RunService.Heartbeat:Wait(), 0.1)
 				if muscle then
 					carry += REP_CAP * dt
@@ -1061,6 +1099,7 @@ do
 					end
 				end
 			end
+
 			for _, pet in ipairs(repPets) do
 				petCall("unequipPet", pet)
 			end
@@ -1068,9 +1107,11 @@ do
 				break
 			end
 
+			-- Étape B : Stopper les reps, équiper les pets x2 rep/rebirth (tribal) et lancer la renaissance
 			for _, pet in ipairs(tribal) do
 				petCall("equipPet", pet)
 			end
+
 			local initial = rebirthsStat and rebirthsStat.Value or 0
 			local done = false
 			while running() and not done do
@@ -1080,12 +1121,11 @@ do
 					done = true
 				end
 			end
+
 			for _, pet in ipairs(tribal) do
 				petCall("unequipPet", pet)
 			end
 		end
-
-		toggleAutoLift()
 	end
 
 	local rebirthToggle, strengthToggle, macroToggle
@@ -1197,7 +1237,7 @@ do
 
 	-- FAST REBIRTH TAB
 	addTitle(macroPage, "Fast Rebirth")
-	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Needs the rebirth pack. Cycles your pets between reps and rebirths automatically." or wrong, 44)
+	macroStatus = addInfo(macroPage, 2, isMuscleGame and "Detects required strength, farms reps with rep pets, then equips tribal pets for rebirth." or wrong, 44)
 
 	macroToggle = addToggle(macroPage, 3, "Fast Rebirth", function(v)
 		if not allowed(macroToggle, macroStatus, v) then
@@ -1224,7 +1264,7 @@ do
 	macroLastTimeLbl = addInfo(macroPage, 5, "Last rebirth: --", 34)
 	local macroCalcLbl = addInfo(macroPage, 6, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
-	-- DÉTECTION INSTANTANÉE DU TEMPS PAR RENAISSANCE (V1 STYLE)
+	-- DÉTECTION INSTANTANÉE DU TEMPS PAR RENAISSANCE
 	task.spawn(function()
 		local rbStat = getRebirthStat()
 		while farm.alive and not rbStat do
