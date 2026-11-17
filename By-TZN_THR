@@ -654,6 +654,8 @@ do
 
 	local rebirthId, strengthId, macroId = 0, 0, 0
 	local rebirthStart, strengthStart, macroStart = nil, nil, nil
+	local lastRebirthTime = nil
+	local lastMacroRebirthTime = nil
 	local conns = {}
 
 	local FORMAT_UNITS = {
@@ -1088,12 +1090,17 @@ do
 
 	local rebirthToggle, strengthToggle, macroToggle
 	local rebirthStatus, strengthStatus, macroStatus
+	local rebirthLastTimeLbl, macroLastTimeLbl
 
 	local function stopRebirth()
 		rebirthId += 1
 		rebirthStart = nil
+		lastRebirthTime = nil
 		rebirthToggle:Set(false, true)
 		rebirthStatus.Text = "Stopped."
+		if rebirthLastTimeLbl then
+			rebirthLastTimeLbl.Text = "Last rebirth: --"
+		end
 	end
 	local function stopStrength()
 		strengthId += 1
@@ -1104,8 +1111,12 @@ do
 	local function stopMacro()
 		macroId += 1
 		macroStart = nil
+		lastMacroRebirthTime = nil
 		macroToggle:Set(false, true)
 		macroStatus.Text = "Stopped."
+		if macroLastTimeLbl then
+			macroLastTimeLbl.Text = "Last rebirth: --"
+		end
 	end
 
 	local function stopOthers(except)
@@ -1143,17 +1154,22 @@ do
 		if v then
 			stopOthers("rebirth")
 			rebirthStart = os.clock()
+			lastRebirthTime = os.clock()
 			trackerReset(rebirthTracker)
 			rebirthTracker.lastVal = getRebirths()
 			rebirthStatus.Text = "Running..."
+			rebirthLastTimeLbl.Text = "Last rebirth: waiting..."
 			task.spawn(rebirthLoop, rebirthId)
 		else
 			rebirthStart = nil
+			lastRebirthTime = nil
 			rebirthStatus.Text = "Stopped."
+			rebirthLastTimeLbl.Text = "Last rebirth: --"
 		end
 	end)
 	local rebirthLbl = addInfo(rebirthPage, 4, "Rebirths: 0 (0)", 34)
-	local rebirthCalcLbl = addInfo(rebirthPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
+	rebirthLastTimeLbl = addInfo(rebirthPage, 5, "Last rebirth: --", 34)
+	local rebirthCalcLbl = addInfo(rebirthPage, 6, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
 
 	-- FAST FARMING TAB
 	addTitle(strengthPage, "Fast Farming")
@@ -1191,17 +1207,52 @@ do
 		if v then
 			stopOthers("macro")
 			macroStart = os.clock()
+			lastMacroRebirthTime = os.clock()
 			trackerReset(macroRebirthTracker)
 			macroRebirthTracker.lastVal = getRebirths()
 			macroStatus.Text = "Running..."
+			macroLastTimeLbl.Text = "Last rebirth: waiting..."
 			task.spawn(fastRebirthLoop, macroId)
 		else
 			macroStart = nil
+			lastMacroRebirthTime = nil
 			macroStatus.Text = "Stopped."
+			macroLastTimeLbl.Text = "Last rebirth: --"
 		end
 	end)
 	local macroLbl = addInfo(macroPage, 4, "Rebirths: 0 (0)", 34)
-	local macroCalcLbl = addInfo(macroPage, 5, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
+	macroLastTimeLbl = addInfo(macroPage, 5, "Last rebirth: --", 34)
+	local macroCalcLbl = addInfo(macroPage, 6, "Rebirths Tot: 0 | 1m: 0 | 1h: 0 | 1d: 0 | 1w: 0 | 1mo: 0", 50)
+
+	-- DÉTECTION INSTANTANÉE DU TEMPS PAR RENAISSANCE (V1 STYLE)
+	task.spawn(function()
+		local rbStat = getRebirthStat()
+		while farm.alive and not rbStat do
+			task.wait(1)
+			rbStat = getRebirthStat()
+		end
+		if rbStat and rbStat:IsA("ValueBase") then
+			local prevVal = tonumber(rbStat.Value) or 0
+			local c = rbStat.Changed:Connect(function(newVal)
+				local numVal = tonumber(newVal) or 0
+				if numVal > prevVal then
+					local now = os.clock()
+					if rebirthStart and lastRebirthTime then
+						local diff = now - lastRebirthTime
+						lastRebirthTime = now
+						rebirthLastTimeLbl.Text = string.format("Last rebirth: %.2fs", diff)
+					end
+					if macroStart and lastMacroRebirthTime then
+						local diff = now - lastMacroRebirthTime
+						lastMacroRebirthTime = now
+						macroLastTimeLbl.Text = string.format("Last rebirth: %.2fs", diff)
+					end
+				end
+				prevVal = numVal
+			end)
+			table.insert(conns, c)
+		end
+	end)
 
 	-- LIVE STATS
 	task.spawn(function()
